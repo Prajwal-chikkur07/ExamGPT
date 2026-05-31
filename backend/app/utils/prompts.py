@@ -127,6 +127,7 @@ def chat_prompt(
     history: str,
     style: str,
     inline_context: str | None = None,
+    image_count: int = 0,
 ) -> str:
     style_directive = {
         "short": (
@@ -152,6 +153,12 @@ def chat_prompt(
             "---\n"
             f"{inline_context}\n"
             "---\n\n"
+        )
+    if image_count:
+        attached_block += (
+            f"{image_count} image attachment(s) are included with THIS question. "
+            "Read the images directly, including scanned/handwritten/printed exam paper text, "
+            "and treat them as PRIMARY source material for this turn.\n\n"
         )
 
     library_block = context or "(no relevant matches in library — answer from attached files / general knowledge of the syllabus, but do not invent specific facts)"
@@ -182,9 +189,22 @@ Now write the model exam answer in the correct academic format. Begin directly w
 """
 
 
-def casual_with_attachments_prompt(question: str, history: str, inline_context: str) -> str:
+def casual_with_attachments_prompt(
+    question: str,
+    history: str,
+    inline_context: str,
+    image_count: int = 0,
+) -> str:
     """Used when the student attaches files but retrieval against the library returns nothing.
     The attached files become the only source of truth for this turn."""
+    image_notice = ""
+    if image_count:
+        image_notice = (
+            f"\nThe student also attached {image_count} image(s). Read the image(s) directly, "
+            "including scanned/handwritten/printed exam paper text, and use them as authoritative "
+            "source material for this turn.\n"
+        )
+
     return f"""{EXAM_SYSTEM}
 
 ═══════════════════════════════════════════════════════════════════════════
@@ -192,6 +212,7 @@ SOURCE MATERIAL
 
 The student has attached file(s) to THIS question. They are the sole authoritative
 source — use ONLY this content to answer:
+{image_notice}
 
 ---
 {inline_context}

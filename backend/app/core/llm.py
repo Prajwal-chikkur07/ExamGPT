@@ -1,4 +1,4 @@
-"""Gemini wrapper. Sync + streaming.
+"""Gemini wrapper. Sync + streaming, with optional multimodal (image) input.
 
 We expose a sync streaming iterator which FastAPI's StreamingResponse can consume
 directly without an asyncio wrapper.
@@ -7,7 +7,7 @@ directly without an asyncio wrapper.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Iterator
+from typing import Any, Iterator
 
 import google.generativeai as genai
 
@@ -25,19 +25,35 @@ def _model():
     return genai.GenerativeModel(settings.gemini_model)
 
 
-def generate(prompt: str, temperature: float = 0.2) -> str:
+def _contents(prompt: str, images: list[Any] | None = None) -> list[Any]:
+    """Gemini's content list. PIL.Image instances are accepted natively by the SDK."""
+    parts: list[Any] = [prompt]
+    if images:
+        parts.extend(images)
+    return parts
+
+
+def generate(
+    prompt: str,
+    temperature: float = 0.2,
+    images: list[Any] | None = None,
+) -> str:
     model = _model()
     resp = model.generate_content(
-        prompt,
+        _contents(prompt, images),
         generation_config={"temperature": temperature, "max_output_tokens": 8192},
     )
     return (resp.text or "").strip()
 
 
-def generate_stream(prompt: str, temperature: float = 0.2) -> Iterator[str]:
+def generate_stream(
+    prompt: str,
+    temperature: float = 0.2,
+    images: list[Any] | None = None,
+) -> Iterator[str]:
     model = _model()
     resp = model.generate_content(
-        prompt,
+        _contents(prompt, images),
         generation_config={"temperature": temperature, "max_output_tokens": 8192},
         stream=True,
     )

@@ -72,6 +72,7 @@ def chat(payload: ChatRequest):
         regenerate=payload.regenerate,
         inline_context=payload.inline_context,
         attachment_names=payload.attachment_names,
+        images=payload.images,
     )
     return ChatResponse(
         answer=text, sources=citations, conversation_id=payload.conversation_id
@@ -98,6 +99,7 @@ def chat_stream(payload: ChatRequest):
         regenerate=payload.regenerate,
         inline_context=payload.inline_context,
         attachment_names=payload.attachment_names,
+        images=payload.images,
     )
 
     def event_stream():

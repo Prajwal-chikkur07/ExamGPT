@@ -16,6 +16,12 @@ export interface SourceCitation {
   score: number;
 }
 
+export interface ImageAttachment {
+  filename: string;
+  mime_type: string;
+  data: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;

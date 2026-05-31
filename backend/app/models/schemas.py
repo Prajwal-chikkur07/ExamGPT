@@ -57,13 +57,20 @@ class SourceCitation(BaseModel):
     score: float
 
 
+class ImageAttachment(BaseModel):
+    filename: str
+    mime_type: str = "image/png"
+    data: str  # base64-encoded raw bytes (no data: URL prefix)
+
+
 class ChatRequest(BaseModel):
     conversation_id: str
     question: str = Field(..., min_length=1)
     answer_style: str = "detailed"  # short | detailed | exam
-    regenerate: bool = False  # if true, drop the last assistant message and re-answer
-    inline_context: Optional[str] = None  # one-shot context (chat attachments), not indexed
-    attachment_names: list[str] = Field(default_factory=list)  # persisted with the user msg
+    regenerate: bool = False
+    inline_context: Optional[str] = None  # extracted text from non-image attachments
+    attachment_names: list[str] = Field(default_factory=list)
+    images: list[ImageAttachment] = Field(default_factory=list)  # vision input, this turn only
 
 
 class ChatResponse(BaseModel):

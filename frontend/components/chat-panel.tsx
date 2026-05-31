@@ -40,7 +40,7 @@ import { chatStreams } from "@/lib/chat-streams";
 import { downloadMarkdown, downloadPDF, downloadText, downloadWord } from "@/lib/download";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { ChatMessage, SourceCitation } from "@/lib/types";
+import type { ChatMessage, ImageAttachment, SourceCitation } from "@/lib/types";
 
 const UPLOAD_ACCEPT = ".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp";
 const MAX_VARIANTS = 5;
@@ -95,6 +95,23 @@ function isCasualQuestion(question: string): boolean {
   const q = (question ?? "").trim().toLowerCase().replace(/[?!.,]+$/, "");
   if (!q) return true;
   return /^(hi|hii|hey|hello|yo|thanks|thank you|thx|ok|okay|bye|good (morning|night|evening|afternoon))$/.test(q);
+}
+
+function fileToImageAttachment(file: File): Promise<ImageAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error(`Couldn't read ${file.name}`));
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      resolve({
+        filename: file.name,
+        mime_type: file.type || "image/png",
+        data: comma >= 0 ? result.slice(comma + 1) : result,
+      });
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function TypingInk() {
@@ -268,22 +285,32 @@ export function ChatPanel({ conversationId }: Props) {
     ]);
 
     let inlineContext: string | undefined;
+    let images: ImageAttachment[] = [];
+    const imageFiles = attachments.filter((f) => f.type.startsWith("image/"));
+    const extractFiles = attachments.filter((f) => !f.type.startsWith("image/"));
+
     if (attachments.length > 0) {
       setUploadingForMessage(true);
       setStreaming(true);
       setStreamedContent("");
       try {
-        const result = await documentsApi.extract(attachments);
-        const parts: string[] = [];
-        for (const f of result.files) {
-          if (f.error) {
-            toast.error(`Couldn't read ${f.filename}`, { description: f.error });
-            continue;
+        const [encodedImages, extraction] = await Promise.all([
+          Promise.all(imageFiles.map(fileToImageAttachment)),
+          extractFiles.length > 0 ? documentsApi.extract(extractFiles) : Promise.resolve(null),
+        ]);
+        images = encodedImages;
+        if (extraction) {
+          const parts: string[] = [];
+          for (const f of extraction.files) {
+            if (f.error) {
+              toast.error(`Couldn't read ${f.filename}`, { description: f.error });
+              continue;
+            }
+            if (f.text?.trim()) parts.push(`[Attached file: ${f.filename}]\n${f.text}`);
+            else parts.push(`[Attached file: ${f.filename}] (no readable text)`);
           }
-          if (f.text?.trim()) parts.push(`[Attached file: ${f.filename}]\n${f.text}`);
-          else parts.push(`[Attached file: ${f.filename}] (no readable text)`);
+          inlineContext = parts.join("\n\n---\n\n") || undefined;
         }
-        inlineContext = parts.join("\n\n---\n\n");
       } catch (err) {
         toast.error("Couldn't read attachments", { description: String(err) });
         setUploadingForMessage(false);
@@ -303,6 +330,7 @@ export function ChatPanel({ conversationId }: Props) {
       regenerate: false,
       inlineContext,
       attachmentNames: attachmentNames.length ? attachmentNames : undefined,
+      images: images.length ? images : undefined,
     });
   }
 
@@ -572,8 +600,8 @@ function TurnBlock({
   return (
     <section className="animate-fade-in mb-2">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-8">
-        {/* ─── Left column: question ─── */}
-        <div className="md:col-span-4 md:sticky md:top-6 self-start">
+        {/* ─── Right column on desktop: question ─── */}
+        <div className="md:col-span-4 md:order-2 md:sticky md:top-6 self-start">
           <div className="flex flex-wrap items-center gap-1.5 mb-3">
             {header.topic && <PaperBadge>{header.topic}</PaperBadge>}
             {header.type && <PaperBadge>{header.type}</PaperBadge>}
@@ -623,8 +651,8 @@ function TurnBlock({
           </div>
         </div>
 
-        {/* ─── Right column: answer ─── */}
-        <div className="md:col-span-8 min-w-0">
+        {/* ─── Left column on desktop: answer ─── */}
+        <div className="md:col-span-8 md:order-1 min-w-0">
           {/* Variant nav row */}
           {totalAssistants > 1 && !streaming && (
             <div className="flex items-center gap-1 mb-2 text-paper-muted">

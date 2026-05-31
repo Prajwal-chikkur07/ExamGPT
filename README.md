@@ -1,93 +1,101 @@
-# ExamGPT - Personal Semester Exam Assistant
+# ExamGPT - Personal Exam Assistant
 
-An AI-powered Exam Intelligence Agent that learns from your study materials (PDFs, DOCX, PPTX, TXT) and helps you prepare for exams by answering questions, solving question papers, and generating revision notes — all grounded in your uploaded content with page citations.
+ExamGPT is a local study assistant for semester exam prep. Upload notes into a
+pgvector-backed library, ask questions in a ChatGPT-style answer sheet, attach
+one-off files to a single question, and get exam-friendly answers from Gemini.
 
-## Features
+## Current Features
 
-- **Knowledge Base Builder** — Upload PDFs, DOCX, PPTX, TXT. Auto chunk, embed, and index into ChromaDB.
-- **Ask Anything Chat** — ChatGPT-style streaming chat with source page citations.
-- **Question Paper Solver** — Upload a question paper (PDF/image), OCR-extract questions, and auto-generate answers from your notes.
-- **Important Questions Generator** — Probable exam questions, unit-wise breakdown, frequently occurring concepts, and viva questions.
-- **Revision Mode** — One-page notes, flashcards, definitions, formula sheets.
-- **Exam Mode** — 2-mark, 5-mark, and 10-mark formatted answers with confidence scores.
-- **Multi-subject** isolation, dark-themed modern UI, mobile responsive.
+- Notes Library for permanent uploads: PDF, DOCX, PPTX, TXT, and Markdown.
+- Chat answer sheet with streaming responses, saved conversations, variants, and source viewing.
+- Per-question attachments: PDF, DOCX, PPTX, TXT, Markdown, PNG, JPG, JPEG, and WebP.
+- Direct Gemini vision support for image attachments, so scanned question papers are read by the model instead of relying only on OCR.
+- Exam-style formatting for 2-mark, 5-mark, 10-mark, MCQ, comparison, algorithm, and numerical answers.
+- Hybrid retrieval over uploaded notes using Postgres full-text search plus pgvector embeddings.
+- Docker Compose setup for Postgres, backend, and frontend.
 
 ## Tech Stack
 
-**Frontend:** Next.js 15 (App Router), TypeScript, TailwindCSS, ShadCN UI
-**Backend:** FastAPI, LangChain, Postgres + **pgvector**, Sentence Transformers, Tesseract OCR
-**LLM:** Gemini 2.5 Flash
+- Frontend: Next.js 15, React 19, TypeScript, TailwindCSS
+- Backend: FastAPI, Pydantic, Google Gemini SDK
+- Storage: Postgres 16 with pgvector
+- Retrieval: Sentence Transformers embeddings, Postgres full-text search, RRF, cross-encoder reranking
+- Parsing/OCR: pypdf, python-docx, python-pptx, Tesseract, Poppler, Pillow
 
 ## Project Structure
 
-```
+```text
 chatbot/
-├── backend/                    # FastAPI service
+├── backend/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── config.py
-│   │   ├── core/               # Document processing, vector store, LLM, OCR
-│   │   ├── routers/            # documents, chat, exam, revision, subjects
-│   │   ├── services/           # Business logic
-│   │   ├── models/             # Pydantic schemas
-│   │   └── utils/              # Prompts, file utils
-│   ├── data/uploads/           # Uploaded files (gitignored). Vectors live in Postgres.
-│   ├── requirements.txt
+│   │   ├── core/          # DB, vector store, document processing, LLM wrapper
+│   │   ├── models/        # Pydantic schemas
+│   │   ├── routers/       # FastAPI routes
+│   │   ├── services/      # Chat, exam, revision workflows
+│   │   └── utils/         # Prompts and file helpers
+│   ├── data/uploads/      # Uploaded source files, gitignored
 │   ├── Dockerfile
-│   └── .env.example
-├── frontend/                   # Next.js 15 app
-│   ├── app/                    # App router pages (chat, upload, exam, revision, important-questions)
-│   ├── components/             # UI components (ShadCN) + custom
-│   ├── lib/                    # API client, store, utils
-│   ├── package.json
+│   └── requirements.txt
+├── frontend/
+│   ├── app/               # Next.js App Router
+│   ├── components/
+│   ├── lib/
 │   ├── Dockerfile
-│   └── .env.example
+│   └── package.json
 ├── docker-compose.yml
 └── README.md
 ```
 
-## Quick Start
+## Quick Start With Docker
 
-### Prerequisites
-
-- Python 3.11+
-- Node.js 20+
-- **Postgres 14+** with the `pgvector` extension installed
-  - Mac: `brew install postgresql@16 pgvector`
-  - Linux: `apt-get install postgresql postgresql-16-pgvector`
-  - Or run the included Docker service: `docker compose up -d db`
-- Tesseract OCR (`brew install tesseract` on macOS, `apt-get install tesseract-ocr` on Linux)
-- A Google Gemini API key (https://aistudio.google.com/apikey)
-
-### Create the database
+1. Create the backend env file:
 
 ```bash
-# Using the Docker service (easiest)
-docker compose up -d db
-
-# Or manually with a local Postgres
-createdb examgpt
-psql examgpt -c "CREATE EXTENSION IF NOT EXISTS vector;"
+cp backend/.env.example backend/.env
 ```
 
-The app auto-creates tables (`subjects`, `documents`, `chunks` with the HNSW
-cosine index) on startup.
+2. Edit `backend/.env` and set:
 
-### 1. Backend
+```bash
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+3. Build and start everything:
+
+```bash
+docker compose up --build
+```
+
+Docker URLs:
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8001
+- Backend health: http://localhost:8001/health
+- Postgres: localhost:55432
+
+The Docker frontend is configured with `NEXT_PUBLIC_API_URL=http://localhost:8001`.
+
+## Local Development
+
+Start Postgres with Docker:
+
+```bash
+docker compose up -d db
+```
+
+Start the backend:
 
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY
-python -m venv .venv
+# Add GEMINI_API_KEY to .env
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Backend runs at http://localhost:8000. Docs at http://localhost:8000/docs.
-
-### 2. Frontend
+Start the frontend:
 
 ```bash
 cd frontend
@@ -96,91 +104,182 @@ npm install
 npm run dev
 ```
 
-Frontend runs at http://localhost:3000.
+Local dev URLs:
 
-### 3. Docker (one-shot)
+- Frontend: http://localhost:3000, or the next free port shown by Next.js
+- Backend API: http://localhost:8000
+- Backend health: http://localhost:8000/health
+
+If you run the backend through Docker but the frontend locally, set
+`frontend/.env.local` to:
 
 ```bash
-cp backend/.env.example backend/.env
-# add GEMINI_API_KEY
-docker compose up --build
+NEXT_PUBLIC_API_URL=http://localhost:8001
 ```
 
 ## Environment Variables
 
-### Backend (`backend/.env`)
+Backend (`backend/.env`):
 
-```
-GEMINI_API_KEY=your_gemini_key_here
-GEMINI_MODEL=gemini-2.0-flash-exp
+```bash
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 DATABASE_URL=postgresql://examgpt:examgpt@localhost:5432/examgpt
 UPLOAD_DIR=./data/uploads
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=150
+TOP_K=6
 CORS_ORIGINS=http://localhost:3000
 ```
 
-### Frontend (`frontend/.env.local`)
+For Docker Compose, `DATABASE_URL` and `CORS_ORIGINS` are overridden in
+`docker-compose.yml` so the backend talks to the `db` service and allows common
+frontend dev ports.
 
-```
+Frontend (`frontend/.env.local`):
+
+```bash
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
+
+## Using The App
+
+1. Open the frontend.
+2. Go to Notes Library and upload study materials you want indexed permanently.
+3. Open a new answer sheet and ask questions.
+4. Use the `+` button in chat to attach files for only the current question.
+5. Attach scanned exam-paper images directly; image files are sent to Gemini vision.
+6. Attach PDFs/DOCX/PPTX/TXT/MD when you want text extracted and included as turn-only context.
+
+Chat layout:
+
+- Desktop: answer on the left, question and attachment preview on the right.
+- Mobile: stacked question/answer layout.
+
+## How Attachments Work
+
+Permanent Notes Library uploads are parsed, chunked, embedded, and stored in
+Postgres for future retrieval.
+
+Per-question chat attachments are not indexed permanently:
+
+- Images (`png`, `jpg`, `jpeg`, `webp`) are base64-encoded in the frontend and
+  sent to Gemini as multimodal input.
+- Non-image files are sent to `/api/chat/extract`; extracted text is passed into
+  the next chat request as `inline_context`.
+- Mixed uploads work: images go to Gemini vision while documents are text-extracted.
+
+This avoids the old failure mode where Tesseract OCR misread scanned exam paper
+images and the model answered from general AI knowledge instead of the paper.
 
 ## API Overview
 
 | Method | Path | Description |
-|--------|------|-------------|
-| GET    | `/health` | Liveness check |
-| GET    | `/api/subjects` | List subjects |
-| POST   | `/api/subjects` | Create subject |
-| DELETE | `/api/subjects/{subject_id}` | Delete subject |
-| POST   | `/api/documents/upload` | Upload + index documents |
-| GET    | `/api/documents?subject_id=...` | List documents |
-| DELETE | `/api/documents/{doc_id}` | Delete document |
-| POST   | `/api/chat` | Ask a question (streaming SSE) |
-| POST   | `/api/exam/solve` | Upload question paper, get answers |
-| POST   | `/api/exam/answer` | Generate 2/5/10-mark answer for a topic |
-| POST   | `/api/important-questions` | Generate important questions |
-| POST   | `/api/revision/notes` | One-page revision notes |
-| POST   | `/api/revision/flashcards` | Flashcards |
+| --- | --- | --- |
+| GET | `/health` | Liveness check |
+| GET | `/api/conversations` | List conversations |
+| POST | `/api/conversations` | Create a conversation |
+| GET | `/api/conversations/{id}/messages` | List messages |
+| POST | `/api/documents/upload` | Upload and index notes |
+| GET | `/api/documents` | List indexed documents |
+| DELETE | `/api/documents/{doc_id}` | Delete a document and its chunks |
+| POST | `/api/chat/extract` | Extract text from one-off chat attachments |
+| POST | `/api/chat` | Non-streaming chat response |
+| POST | `/api/chat/stream` | Streaming chat response with SSE |
+| POST | `/api/exam/solve` | OCR/extract and solve an uploaded question paper |
+| POST | `/api/exam/answer` | Generate a 2/5/10-mark answer for a topic |
+| POST | `/api/important-questions` | Generate important questions |
+| POST | `/api/revision/notes` | Generate revision notes |
+| POST | `/api/revision/flashcards` | Generate flashcards |
 
-## How It Works
+## Retrieval Pipeline
 
-### Indexing pipeline
+1. Follow-up questions may be rewritten into standalone search queries.
+2. Dense retrieval uses pgvector cosine similarity over local embeddings.
+3. Lexical retrieval uses Postgres full-text search.
+4. Reciprocal Rank Fusion merges the dense and lexical results.
+5. A local cross-encoder reranks candidate chunks.
+6. Gemini generates the final answer using retrieved notes plus any current-turn attachments.
 
-1. **Upload** — File is saved locally and parsed (PyPDF/python-docx/python-pptx/plain).
-2. **Chunk** — LangChain `RecursiveCharacterTextSplitter` produces ~1000-char chunks with overlap.
-3. **Embed** — Sentence Transformers `BAAI/bge-small-en-v1.5` produces 384-dim embeddings locally (no API call).
-4. **Store** — Chunks + metadata (doc_id, page) saved to Postgres. Each chunk gets:
-   - a `vector(384)` embedding column with an **HNSW cosine** index
-   - a `tsvector` lexical column (auto-generated) with a **GIN** index
+## Database
 
-### Retrieval pipeline (per chat message)
+Tables are auto-created on backend startup:
 
-1. **Query rewriting** — If the user message is a follow-up ("tell me more"), Gemini rewrites it into a standalone search query using the conversation history.
-2. **Hybrid retrieval** — Two retrievers run in parallel:
-   - **Dense** (semantic): pgvector cosine ANN search
-   - **Lexical** (keyword): Postgres full-text BM25-style search via `websearch_to_tsquery`
-3. **Reciprocal Rank Fusion (RRF)** — The two ranked lists are merged into a single ranking that benefits from both signals.
-4. **Cross-encoder reranking** — A small local cross-encoder (`ms-marco-MiniLM-L-6-v2`) scores (query, passage) pairs directly, surfacing the most semantically precise top-k.
-5. **Generation** — Gemini 2.5 Flash answers using only the top reranked chunks, with inline `[filename p.N]` citations.
+- `documents`
+- `chunks`
+- `conversations`
+- `messages`
 
-### Database schema (auto-created)
+Messages store source metadata and attachment filenames in JSONB. Deleting a
+document removes its chunks; deleting a conversation removes its messages.
 
-- `documents(id, filename, file_path, file_type, pages, chunks, status, created_at)`
-- `chunks(id, document_id → documents, filename, page, content, embedding vector(384), content_tsv tsvector)`
-- `conversations(id, title, created_at, updated_at)`
-- `messages(id, conversation_id → conversations, role, content, sources jsonb, created_at)`
+## Troubleshooting
 
-`ON DELETE CASCADE` propagates, so deleting a document removes its chunks, and deleting a conversation removes its messages.
+### Browser Shows "Internal Server Error"
+
+This usually means the Next.js dev server is stale or was started before the
+latest build/config changes.
+
+1. Stop the frontend terminal with `Ctrl+C`.
+2. Restart from `frontend/`:
+
+```bash
+npm run dev
+```
+
+3. If Next chooses port `3001`, use the URL it prints.
+
+If you are mixing Docker backend with local frontend, make sure
+`frontend/.env.local` points to the Docker backend:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:8001
+```
+
+### Backend Health Check
+
+```bash
+curl http://localhost:8000/health
+# or, with Docker backend:
+curl http://localhost:8001/health
+```
+
+Expected response:
+
+```json
+{"status":"ok","service":"examgpt-api"}
+```
+
+### Rebuild Backend After Code Changes
+
+```bash
+docker compose build backend
+docker compose up -d backend
+```
+
+### Next.js Workspace Root Warning
+
+The frontend config sets `outputFileTracingRoot` to the repository root to avoid
+Next.js accidentally selecting a parent directory when another lockfile exists
+above this project.
+
+## Verification Commands
+
+```bash
+python3 -m compileall backend/app
+cd frontend && npm run build
+```
+
+`npm run lint` may ask Next.js to initialize ESLint if the repo has no ESLint
+config yet.
 
 ## Limitations
 
-- OCR quality depends on input image clarity.
-- PPTX page numbers map to slide numbers.
-- Back up Postgres (`pg_dump examgpt`) for full persistence. Uploaded raw files live under `backend/data/uploads/` and should be backed up too if you want to re-index later.
+- Gemini vision quality depends on image clarity, resolution, crop, and rotation.
+- The older `/api/exam/solve` route still uses OCR/extraction; chat image attachments use Gemini vision directly.
+- Raw uploads live under `backend/data/uploads/`; back up Postgres and this folder if you need full persistence.
 
 ## License
 
-MIT — for personal/educational use.
+MIT - for personal and educational use.

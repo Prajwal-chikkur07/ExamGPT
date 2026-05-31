@@ -5,6 +5,7 @@ import type {
   ExamQuestionResult,
   Flashcard,
   ImportantQuestion,
+  ImageAttachment,
   Message,
   SourceCitation,
 } from "./types";
@@ -102,6 +103,7 @@ export const chatApi = {
       regenerate?: boolean;
       inlineContext?: string;
       attachmentNames?: string[];
+      images?: ImageAttachment[];
     }
   ) => {
     const res = await fetch(`${API_URL}/api/chat/stream`, {
@@ -114,6 +116,7 @@ export const chatApi = {
         regenerate: handlers.regenerate ?? false,
         inline_context: handlers.inlineContext ?? null,
         attachment_names: handlers.attachmentNames ?? [],
+        images: handlers.images ?? [],
       }),
       signal: handlers.signal,
     });

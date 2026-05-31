@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
+import io
 import re
-from typing import Iterator
+from typing import Any, Iterator
 
 from app.config import get_settings
 from app.core import llm, store, vector_store
-from app.models.schemas import SourceCitation
+from app.models.schemas import ImageAttachment, SourceCitation
 from app.utils.file_utils import new_id
 from app.utils.prompts import (
     casual_chat_prompt,
@@ -13,6 +15,25 @@ from app.utils.prompts import (
     chat_prompt,
     query_rewrite_prompt,
 )
+
+
+def _decode_images(images: list[ImageAttachment] | None) -> list[Any]:
+    """Decode base64 image attachments into PIL images for Gemini multimodal."""
+    if not images:
+        return []
+    from PIL import Image
+
+    out: list[Any] = []
+    for img in images:
+        try:
+            raw = base64.b64decode(img.data)
+            pil = Image.open(io.BytesIO(raw))
+            # Force load so the file is closed and the image is usable later.
+            pil.load()
+            out.append(pil)
+        except Exception:
+            continue
+    return out
 
 
 # Matches stray citation-style tags the model sometimes outputs despite being told not to,
@@ -189,8 +210,11 @@ def answer(
     regenerate: bool = False,
     inline_context: str | None = None,
     attachment_names: list[str] | None = None,
+    images: list[ImageAttachment] | None = None,
 ) -> tuple[str, list[SourceCitation]]:
     settings = get_settings()
+    decoded_images = _decode_images(images)
+    image_count = len(decoded_images)
     if regenerate:
         existing = store.last_user_question(conversation_id) or question
         question = existing
@@ -211,7 +235,7 @@ def answer(
     history_text = _format_history(prior, settings.history_window)
 
     # Fast path: skip retrieval for greetings / meta chat WHEN there are no attachments.
-    if _is_trivial_message(question) and not inline_context:
+    if _is_trivial_message(question) and not inline_context and not decoded_images:
         text = _strip_citations(llm.generate(casual_chat_prompt(question, history_text)))
         store.add_message(new_id("msg_"), conversation_id, "assistant", text, sources=[])
         return text, []
@@ -221,20 +245,32 @@ def answer(
     weak = not chunks or chunks[0].score < _RELEVANCE_THRESHOLD
 
     # If we have inline attachments, those are the primary source — answer even if retrieval is weak.
-    if inline_context and weak:
-        prompt = casual_with_attachments_prompt(question, history_text, inline_context)
-        text = _strip_citations(llm.generate(prompt))
+    if (inline_context or decoded_images) and weak:
+        prompt = casual_with_attachments_prompt(
+            question,
+            history_text,
+            inline_context or "(No extracted text. Read the attached image(s) directly.)",
+            image_count=image_count,
+        )
+        text = _strip_citations(llm.generate(prompt, images=decoded_images))
         store.add_message(new_id("msg_"), conversation_id, "assistant", text, sources=[])
         return text, []
 
-    if weak and not inline_context:
+    if weak and not inline_context and not decoded_images:
         text = _strip_citations(llm.generate(casual_chat_prompt(question, history_text)))
         store.add_message(new_id("msg_"), conversation_id, "assistant", text, sources=[])
         return text, []
 
     context = vector_store.build_context(chunks)
-    prompt = chat_prompt(question, context, history_text, style, inline_context=inline_context)
-    text = _strip_citations(llm.generate(prompt))
+    prompt = chat_prompt(
+        question,
+        context,
+        history_text,
+        style,
+        inline_context=inline_context,
+        image_count=image_count,
+    )
+    text = _strip_citations(llm.generate(prompt, images=decoded_images))
     citations = _to_citations(chunks)
     store.add_message(
         new_id("msg_"),
@@ -256,6 +292,7 @@ def answer_stream(
     regenerate: bool = False,
     inline_context: str | None = None,
     attachment_names: list[str] | None = None,
+    images: list[ImageAttachment] | None = None,
 ) -> tuple[Iterator[str], list[SourceCitation], callable]:
     """Streaming answer with citation stripping applied on finalize.
 
@@ -264,6 +301,8 @@ def answer_stream(
     the same user turn as variants the student can flip between.
     """
     settings = get_settings()
+    decoded_images = _decode_images(images)
+    image_count = len(decoded_images)
     if regenerate:
         existing = store.last_user_question(conversation_id) or question
         question = existing
@@ -296,7 +335,7 @@ def answer_stream(
     temperature = 0.55 if regenerate else 0.2
 
     # Fast path: skip retrieval entirely for greetings / meta chat WHEN there are no attachments.
-    if _is_trivial_message(question) and not inline_context:
+    if _is_trivial_message(question) and not inline_context and not decoded_images:
         iterator = _stream_strip_citations(
             llm.generate_stream(casual_chat_prompt(question, history_text), temperature=temperature)
         )
@@ -306,24 +345,39 @@ def answer_stream(
     chunks = vector_store.query(search_query)
     weak = not chunks or chunks[0].score < _RELEVANCE_THRESHOLD
 
-    if inline_context and weak:
+    if (inline_context or decoded_images) and weak:
         iterator = _stream_strip_citations(
             llm.generate_stream(
-                casual_with_attachments_prompt(question, history_text, inline_context),
+                casual_with_attachments_prompt(
+                    question,
+                    history_text,
+                    inline_context or "(No extracted text. Read the attached image(s) directly.)",
+                    image_count=image_count,
+                ),
                 temperature=temperature,
+                images=decoded_images,
             )
         )
         return iterator, [], _make_casual_finalize()
 
-    if weak and not inline_context:
+    if weak and not inline_context and not decoded_images:
         iterator = _stream_strip_citations(
             llm.generate_stream(casual_chat_prompt(question, history_text), temperature=temperature)
         )
         return iterator, [], _make_casual_finalize()
 
     context = vector_store.build_context(chunks)
-    prompt = chat_prompt(question, context, history_text, style, inline_context=inline_context)
-    iterator = _stream_strip_citations(llm.generate_stream(prompt, temperature=temperature))
+    prompt = chat_prompt(
+        question,
+        context,
+        history_text,
+        style,
+        inline_context=inline_context,
+        image_count=image_count,
+    )
+    iterator = _stream_strip_citations(
+        llm.generate_stream(prompt, temperature=temperature, images=decoded_images)
+    )
     citations = _to_citations(chunks)
     citation_payload = [c.model_dump() for c in citations]
 
