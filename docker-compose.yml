@@ -29,6 +29,7 @@ services:
       DATABASE_URL: postgresql://examgpt:examgpt@db:5432/examgpt
       # Override CORS so it always allows both common dev ports regardless of .env.
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+      PORT: 8000
     volumes:
       - ./backend/data:/app/data
     depends_on:
@@ -37,7 +38,10 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001
     container_name: examgpt-frontend
     ports:
       - "3000:3000"

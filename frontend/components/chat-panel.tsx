@@ -1,4 +1,4 @@
-"use client";
+  "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -533,7 +533,7 @@ export function ChatPanel({ conversationId }: Props) {
   );
 }
 
-/* ───────────────────── TurnBlock — two-column Q/A ───────────────────── */
+/* ───────────────────── TurnBlock — Chat-style Q/A ───────────────────── */
 
 function TurnBlock({
   turn,
@@ -572,43 +572,29 @@ function TurnBlock({
   const assistantContent = streaming ? streamedContent : activeAssistant?.content ?? "";
   const assistantSources = (activeAssistant?.sources as SourceCitation[] | undefined) ?? [];
 
-  /* ── Casual replies: keep light, single-column ── */
-  if (casual && !streaming && turn.user) {
-    return (
-      <section className="animate-fade-in py-3 mb-2">
-        <div className="text-[14px] text-paper-muted mb-1.5">
-          <span className="text-paper-muted/70 mr-2">You:</span>
-          {turn.user.content}
-        </div>
-        <div className="markdown text-paper-foreground">
-          {assistantContent ? <Markdown>{assistantContent}</Markdown> : <TypingInk />}
-        </div>
-        {activeAssistant && (
-          <MessageActions
-            text={activeAssistant.content}
-            feedback={feedback}
-            onFeedback={setFeedback}
-            onRegenerate={canRegenerate ? onRegenerate : undefined}
-            canRegenerate={canRegenerate}
-          />
-        )}
-        {showDivider && <SectionDivider />}
-      </section>
-    );
-  }
-
   return (
-    <section className="animate-fade-in mb-2">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-8">
-        {/* ─── Right column on desktop: question ─── */}
-        <div className="md:col-span-4 md:order-2 md:sticky md:top-6 self-start">
-          <div className="flex flex-wrap items-center gap-1.5 mb-3">
-            {header.topic && <PaperBadge>{header.topic}</PaperBadge>}
-            {header.type && <PaperBadge>{header.type}</PaperBadge>}
-            {header.marks !== null && <PaperBadge accent>{header.marks} Marks</PaperBadge>}
+    <section className="animate-fade-in mb-8">
+      {turn.user && (
+        <div className="mb-5 flex justify-end">
+          <div className="max-w-[88%] md:max-w-[72%] rounded-2xl border border-paper-border/70 bg-paper-foreground/8 px-4 py-3 text-paper-foreground shadow-sm">
+            {!casual && (
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                {header.topic && <PaperBadge>{header.topic}</PaperBadge>}
+                {header.type && <PaperBadge>{header.type}</PaperBadge>}
+                {header.marks !== null && <PaperBadge accent>{header.marks} Marks</PaperBadge>}
+              </div>
+            )}
+            <div className="text-[15px] leading-relaxed whitespace-pre-wrap">
+              {question}
+            </div>
           </div>
-          {turn.user?.attachments && turn.user.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-3">
+        </div>
+      )}
+
+      <div className="mb-2">
+        {turn.user?.attachments && turn.user.attachments.length > 0 && (
+          <div className="mb-4 flex justify-end">
+            <div className="flex max-w-[88%] md:max-w-[72%] flex-wrap justify-end gap-2">
               {turn.user.attachments.map((name, j) => {
                 const preview = turn.user?.attachmentPreviews?.[j];
                 if (preview) {
@@ -634,89 +620,72 @@ function TurnBlock({
                 );
               })}
             </div>
-          )}
-          <div className="flex items-start gap-2.5">
+          </div>
+        )}
+
+        {/* Variant nav row */}
+        {totalAssistants > 1 && !streaming && (
+          <div className="flex items-center gap-1 mb-2 text-paper-muted">
+            <button
+              type="button"
+              onClick={() => setVariantIndex(Math.max(0, safeIdx - 1))}
+              disabled={safeIdx === 0}
+              aria-label="Previous variant"
+              className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-paper-foreground/8 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
             <span
-              className="text-paper-muted text-base mt-0.5 shrink-0"
+              className="text-[11.5px] tabular-nums"
               style={{ fontFamily: "var(--font-serif)" }}
             >
-              Q.
+              {safeIdx + 1} / {totalAssistants}
             </span>
-            <h2
-              className="text-[15.5px] md:text-base leading-snug text-paper-foreground font-medium"
-              style={{ fontFamily: "var(--font-serif)" }}
+            <button
+              type="button"
+              onClick={() => setVariantIndex(Math.min(totalAssistants - 1, safeIdx + 1))}
+              disabled={safeIdx >= totalAssistants - 1}
+              aria-label="Next variant"
+              className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-paper-foreground/8 disabled:opacity-40 disabled:pointer-events-none"
             >
-              {question}
-            </h2>
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
+        )}
+
+        <div className="markdown min-h-[2rem] max-w-none">
+          {assistantContent ? (
+            <Markdown>{assistantContent}</Markdown>
+          ) : streaming ? (
+            uploadingForMessage ? (
+              <div className="flex items-center gap-2 text-paper-muted text-sm">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Reading attachment…
+              </div>
+            ) : (
+              <TypingInk />
+            )
+          ) : null}
         </div>
 
-        {/* ─── Left column on desktop: answer ─── */}
-        <div className="md:col-span-8 md:order-1 min-w-0">
-          {/* Variant nav row */}
-          {totalAssistants > 1 && !streaming && (
-            <div className="flex items-center gap-1 mb-2 text-paper-muted">
-              <button
-                type="button"
-                onClick={() => setVariantIndex(Math.max(0, safeIdx - 1))}
-                disabled={safeIdx === 0}
-                aria-label="Previous variant"
-                className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-paper-foreground/8 disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span
-                className="text-[11.5px] tabular-nums"
-                style={{ fontFamily: "var(--font-serif)" }}
-              >
-                {safeIdx + 1} / {totalAssistants}
-              </span>
-              <button
-                type="button"
-                onClick={() => setVariantIndex(Math.min(totalAssistants - 1, safeIdx + 1))}
-                disabled={safeIdx >= totalAssistants - 1}
-                aria-label="Next variant"
-                className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-paper-foreground/8 disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
-          <div className="markdown min-h-[2rem]">
-            {assistantContent ? (
-              <Markdown>{assistantContent}</Markdown>
-            ) : streaming ? (
-              uploadingForMessage ? (
-                <div className="flex items-center gap-2 text-paper-muted text-sm">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Reading attachment…
-                </div>
-              ) : (
-                <TypingInk />
-              )
-            ) : null}
+        {/* Action row */}
+        {activeAssistant && !streaming && (
+          <div className="mt-2 flex items-center gap-0.5">
+            <MessageActions
+              text={activeAssistant.content}
+              feedback={feedback}
+              onFeedback={setFeedback}
+              onRegenerate={canRegenerate ? onRegenerate : undefined}
+              canRegenerate={canRegenerate}
+            />
+            <OverflowMenu
+              content={activeAssistant.content}
+              sources={assistantSources}
+              title={question}
+              onViewSources={() => onViewSources(assistantSources, question)}
+            />
           </div>
-
-          {/* Action row */}
-          {activeAssistant && !streaming && (
-            <div className="mt-2 flex items-center gap-0.5">
-              <MessageActions
-                text={activeAssistant.content}
-                feedback={feedback}
-                onFeedback={setFeedback}
-                onRegenerate={canRegenerate ? onRegenerate : undefined}
-                canRegenerate={canRegenerate}
-              />
-              <OverflowMenu
-                content={activeAssistant.content}
-                sources={assistantSources}
-                title={question}
-                onViewSources={() => onViewSources(assistantSources, question)}
-              />
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {showDivider && <SectionDivider />}

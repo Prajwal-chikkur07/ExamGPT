@@ -17,8 +17,10 @@ out/
 # Env
 .env
 .env.local
+.env.production
 .env.*.local
 !.env.example
+!.env.production.example
 
 # Data
 backend/data/

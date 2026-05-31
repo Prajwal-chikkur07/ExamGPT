@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: examgpt-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    disk:
+      name: uploads
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: EMBEDDING_MODEL
+        value: sentence-transformers/all-MiniLM-L6-v2
+      - key: RERANKER_MODEL
+        value: cross-encoder/ms-marco-MiniLM-L-6-v2
+      - key: DATABASE_URL
+        fromDatabase:
+          name: examgpt-db
+          property: connectionString
+      - key: UPLOAD_DIR
+        value: /app/data/uploads
+      - key: CORS_ORIGINS
+        sync: false
+      - key: CHUNK_SIZE
+        value: "1000"
+      - key: CHUNK_OVERLAP
+        value: "150"
+      - key: RETRIEVE_TOP_K
+        value: "12"
+      - key: RERANK_TOP_K
+        value: "4"
+      - key: RRF_K
+        value: "60"
+      - key: HISTORY_WINDOW
+        value: "10"
+
+databases:
+  - name: examgpt-db
+    databaseName: examgpt
+    user: examgpt

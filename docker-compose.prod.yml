@@ -1,0 +1,58 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-examgpt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-examgpt}
+    volumes:
+      - examgpt-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-examgpt} -d ${POSTGRES_DB:-examgpt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      RERANKER_MODEL: ${RERANKER_MODEL:-cross-encoder/ms-marco-MiniLM-L-6-v2}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-examgpt}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-examgpt}
+      UPLOAD_DIR: /app/data/uploads
+      CHUNK_SIZE: ${CHUNK_SIZE:-1000}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-150}
+      RETRIEVE_TOP_K: ${RETRIEVE_TOP_K:-12}
+      RERANK_TOP_K: ${RERANK_TOP_K:-4}
+      RRF_K: ${RRF_K:-60}
+      HISTORY_WINDOW: ${HISTORY_WINDOW:-10}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      PORT: 8000
+    volumes:
+      - examgpt-uploads:/app/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8001}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+
+volumes:
+  examgpt-db-data:
+  examgpt-uploads:
