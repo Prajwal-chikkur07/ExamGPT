@@ -1,0 +1,51 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: examgpt-db
+    environment:
+      POSTGRES_USER: examgpt
+      POSTGRES_PASSWORD: examgpt
+      POSTGRES_DB: examgpt
+    ports:
+      - "55432:5432"
+    volumes:
+      - examgpt-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U examgpt -d examgpt"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: examgpt-backend
+    ports:
+      - "8001:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Inside the compose network, the DB host is the service name "db".
+      DATABASE_URL: postgresql://examgpt:examgpt@db:5432/examgpt
+      # Override CORS so it always allows both common dev ports regardless of .env.
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+    volumes:
+      - ./backend/data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: examgpt-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  examgpt-db-data:
