@@ -1,0 +1,331 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  ExamGPT — "Notebook on a study desk".
+  Every surface the user touches is paper. The dark surround is the mahogany
+  desk these papers sit on. Amber is the highlighter pen used for accents.
+*/
+
+@layer base {
+  :root {
+    /* The desk — warm dark mahogany */
+    --background: 28 22% 7%;
+    --foreground: 38 28% 92%;
+
+    /* Chrome surfaces that aren't paper (rare — small floating things). */
+    --card: 28 18% 11%;
+    --card-foreground: 38 28% 92%;
+    --popover: 28 18% 11%;
+    --popover-foreground: 38 28% 92%;
+
+    --muted: 28 14% 13%;
+    --muted-foreground: 38 12% 68%;
+    --accent: 28 16% 16%;
+    --accent-foreground: 38 28% 92%;
+
+    --border: 28 14% 18%;
+    --input: 28 14% 18%;
+
+    /* Highlighter — warm amber */
+    --primary: 30 92% 56%;
+    --primary-foreground: 30 50% 10%;
+
+    --secondary: 28 14% 14%;
+    --secondary-foreground: 38 28% 92%;
+
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --ring: 30 92% 56%;
+
+    /* PAPER — the cream stationery used for every interactive surface */
+    --paper: 42 36% 94%;
+    --paper-foreground: 28 30% 12%;
+    --paper-border: 36 22% 78%;
+    --paper-muted: 28 15% 38%;
+    --paper-accent: 30 92% 42%;        /* amber, dark enough to read on cream */
+    --paper-accent-bg: 38 75% 88%;     /* warm wash used for active states */
+
+    --radius: 0.65rem;
+    --safe-bottom: env(safe-area-inset-bottom);
+
+    --font-serif: ui-serif, Georgia, "Iowan Old Style", "Apple Garamond", "Times New Roman", serif;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+
+  html, body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    /* Warm amber desk-lamp glow from top-right; brown shadow bottom-left */
+    background-image:
+      radial-gradient(at 105% -5%, hsl(38 80% 40% / 0.10), transparent 55%),
+      radial-gradient(at -5% 110%, hsl(20 35% 20% / 0.20), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary) / 0.55);
+    outline-offset: 2px;
+  }
+  input:focus, textarea:focus, button:focus { outline: none; }
+}
+
+/* ────────────── Paper variants ────────────── */
+
+/*
+  .paper        : an answer page (ruled, with a red margin)
+  .paper-plain  : flat cream sheet (sidebar, welcome card, etc.)
+  .paper-pad    : the composer notepad — bottom-anchored cream surface
+*/
+
+.paper,
+.paper-plain,
+.paper-pad {
+  background-color: hsl(var(--paper));
+  color: hsl(var(--paper-foreground));
+  border: 1px solid hsl(var(--paper-border) / 0.7);
+}
+
+.paper {
+  border-radius: 0.85rem;
+  position: relative;
+  box-shadow:
+    0 1px 0 0 hsl(var(--paper-border) / 0.4),
+    0 18px 35px -20px hsl(0 0% 0% / 0.55),
+    0 4px 8px -4px hsl(0 0% 0% / 0.3);
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(100% - 1px),
+    hsl(var(--paper-border) / 0.28) calc(100% - 1px)
+  );
+  background-size: 100% 2rem;
+}
+.paper::before {
+  content: "";
+  position: absolute;
+  left: 2.5rem;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: hsl(0 60% 55% / 0.22);
+  pointer-events: none;
+}
+@media (max-width: 640px) {
+  .paper::before { display: none; }
+}
+
+.paper-plain {
+  border-radius: 0;
+  box-shadow:
+    inset -1px 0 0 hsl(var(--paper-border) / 0.6),
+    0 18px 30px -20px hsl(0 0% 0% / 0.45);
+}
+
+.paper-pad {
+  border-radius: 0.85rem;
+  box-shadow:
+    0 1px 0 0 hsl(var(--paper-border) / 0.5),
+    0 10px 25px -12px hsl(0 0% 0% / 0.5);
+}
+
+/*
+  Full-bleed cream paper surface used for the main chat area. Same ruled lines
+  and red margin as `.paper`, but no card shadow / border-radius — meant to
+  fill its container edge to edge.
+*/
+.paper-surface {
+  background-color: hsl(var(--paper));
+  color: hsl(var(--paper-foreground));
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(100% - 1px),
+    hsl(var(--paper-border) / 0.22) calc(100% - 1px)
+  );
+  background-size: 100% 2rem;
+  position: relative;
+}
+.paper-surface::before {
+  content: "";
+  position: absolute;
+  left: 4rem;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: hsl(0 60% 55% / 0.18);
+  pointer-events: none;
+}
+@media (max-width: 768px) {
+  .paper-surface::before { display: none; }
+}
+
+/* ────────────── Typography inside any paper ────────────── */
+
+.paper,
+.paper-plain,
+.paper-pad,
+.paper-surface {
+  --foreground: var(--paper-foreground);
+}
+
+.paper .markdown,
+.paper-plain .markdown,
+.paper-pad .markdown,
+.paper-surface .markdown {
+  color: hsl(var(--paper-foreground));
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.7;
+}
+.paper .markdown > *:first-child,
+.paper-plain .markdown > *:first-child { margin-top: 0; }
+.paper .markdown > *:last-child,
+.paper-plain .markdown > *:last-child { margin-bottom: 0; }
+
+.paper .markdown h1, .paper .markdown h2, .paper .markdown h3, .paper .markdown h4,
+.paper-plain .markdown h1, .paper-plain .markdown h2, .paper-plain .markdown h3,
+.paper-surface .markdown h1, .paper-surface .markdown h2, .paper-surface .markdown h3, .paper-surface .markdown h4 {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: hsl(var(--paper-foreground));
+  margin: 1.25rem 0 0.5rem;
+}
+.paper .markdown h1 { font-size: 1.5rem; }
+.paper .markdown h2 { font-size: 1.25rem; }
+.paper .markdown h3 { font-size: 1.1rem; }
+.paper .markdown h4 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--paper-muted));
+}
+
+.paper .markdown p, .paper-plain .markdown p { margin: 0.75rem 0; line-height: 1.75; }
+.paper .markdown strong { font-weight: 600; }
+.paper .markdown ul, .paper-plain .markdown ul { list-style: disc; padding-left: 1.5rem; margin: 0.75rem 0; }
+.paper .markdown ol, .paper-plain .markdown ol { list-style: decimal; padding-left: 1.5rem; margin: 0.75rem 0; }
+.paper .markdown li { margin: 0.25rem 0; }
+
+.paper .markdown code {
+  background: hsl(38 30% 86%);
+  color: hsl(var(--paper-foreground));
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  font-size: 0.88em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.paper .markdown pre {
+  background: hsl(28 25% 18%);
+  color: hsl(40 22% 92%);
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+.paper .markdown pre code { background: transparent; color: inherit; padding: 0; }
+.paper .markdown blockquote {
+  border-left: 3px solid hsl(var(--paper-accent) / 0.65);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: hsl(var(--paper-muted));
+  font-style: italic;
+}
+.paper .markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+.paper .markdown th, .paper .markdown td {
+  border: 1px solid hsl(var(--paper-border));
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.paper .markdown th { background: hsl(38 30% 86%); font-weight: 600; }
+.paper .markdown hr { border: none; border-top: 1px solid hsl(var(--paper-border)); margin: 1.25rem 0; }
+.paper .markdown a { color: hsl(var(--paper-accent)); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Buttons inside any paper surface — invert dark-mode defaults */
+.paper button,
+.paper-plain button,
+.paper-pad button,
+.paper-surface button {
+  color: hsl(var(--paper-muted));
+}
+.paper button:hover:not(:disabled),
+.paper-plain button:hover:not(:disabled),
+.paper-pad button:hover:not(:disabled),
+.paper-surface button:hover:not(:disabled) {
+  background-color: hsl(var(--paper-foreground) / 0.06);
+  color: hsl(var(--paper-foreground));
+}
+.paper .text-emerald-400, .paper-surface .text-emerald-400 { color: hsl(160 70% 35%) !important; }
+.paper .text-rose-400, .paper-surface .text-rose-400 { color: hsl(0 65% 48%) !important; }
+
+/* Markdown body styling also inside paper-surface */
+.paper-surface .markdown p { margin: 0.75rem 0; line-height: 1.75; }
+.paper-surface .markdown strong { font-weight: 600; }
+.paper-surface .markdown ul { list-style: disc; padding-left: 1.5rem; margin: 0.75rem 0; }
+.paper-surface .markdown ol { list-style: decimal; padding-left: 1.5rem; margin: 0.75rem 0; }
+.paper-surface .markdown li { margin: 0.25rem 0; }
+.paper-surface .markdown code { background: hsl(38 30% 86%); color: hsl(var(--paper-foreground)); padding: 0.1rem 0.35rem; border-radius: 0.3rem; font-size: 0.88em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.paper-surface .markdown pre { background: hsl(28 25% 18%); color: hsl(40 22% 92%); padding: 0.85rem 1rem; border-radius: 0.6rem; font-size: 0.85rem; overflow-x: auto; margin: 1rem 0; }
+.paper-surface .markdown pre code { background: transparent; color: inherit; padding: 0; }
+.paper-surface .markdown blockquote { border-left: 3px solid hsl(var(--paper-accent) / 0.65); padding-left: 1rem; margin: 1rem 0; color: hsl(var(--paper-muted)); font-style: italic; }
+.paper-surface .markdown table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+.paper-surface .markdown th, .paper-surface .markdown td { border: 1px solid hsl(var(--paper-border)); padding: 0.5rem 0.75rem; text-align: left; }
+.paper-surface .markdown th { background: hsl(38 30% 86%); font-weight: 600; }
+.paper-surface .markdown hr { border: none; border-top: 1px solid hsl(var(--paper-border)); margin: 1.25rem 0; }
+.paper-surface .markdown a { color: hsl(var(--paper-accent)); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ────────────── Plain markdown (off-paper, rarely needed) ────────────── */
+
+.markdown { font-size: 15px; line-height: 1.65; }
+.markdown h1, .markdown h2, .markdown h3 { @apply font-semibold; }
+.markdown p { @apply my-3; }
+.markdown ul { @apply list-disc pl-6 my-3; }
+.markdown ol { @apply list-decimal pl-6 my-3; }
+.markdown code { @apply bg-muted px-1.5 py-0.5 rounded font-mono text-[0.88em]; }
+.markdown pre { @apply bg-muted/70 border border-border p-3 rounded-lg overflow-x-auto my-3 text-[13px]; }
+
+/* ────────────── Utilities ────────────── */
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.3s ease-out; }
+
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-left { animation: slide-in-left 0.2s ease-out; }
+
+@keyframes ink-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.15); }
+}
+.animate-ink-pulse { animation: ink-pulse 1.2s ease-in-out infinite; }
