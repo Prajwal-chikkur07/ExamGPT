@@ -69,14 +69,10 @@ ${markdownToHtml(content)}
 }
 
 export function downloadPDF(content: string, title: string) {
-  // Render the answer in a hidden, print-friendly window and trigger print.
-  // The user picks "Save as PDF" in the system print dialog.
-  const win = window.open("", "_blank", "noopener=yes,width=820,height=900");
-  if (!win) {
-    alert("Allow pop-ups to download as PDF.");
-    return;
-  }
-  win.document.write(`<!DOCTYPE html>
+  // Use a hidden iframe instead of window.open — popup blockers and the loss of
+  // user-gesture context (e.g. when triggered from inside Radix DropdownMenu)
+  // make window.open unreliable.
+  const html = `<!DOCTYPE html>
 <html><head>
 <meta charset='utf-8'>
 <title>${escapeHtml(title)}</title>
@@ -103,17 +99,46 @@ export function downloadPDF(content: string, title: string) {
 <body>
 <div class="title">${escapeHtml(title)}</div>
 ${markdownToHtml(content)}
-<script>
-  window.onload = function() {
-    setTimeout(function () {
-      window.focus();
-      window.print();
-      setTimeout(function () { window.close(); }, 400);
-    }, 250);
+</body></html>`;
+
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.setAttribute("aria-hidden", "true");
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    setTimeout(() => {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 1500);
   };
-<\/script>
-</body></html>`);
-  win.document.close();
+
+  iframe.onload = () => {
+    try {
+      const win = iframe.contentWindow;
+      if (!win) {
+        cleanup();
+        return;
+      }
+      win.focus();
+      win.print();
+    } finally {
+      cleanup();
+    }
+  };
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    cleanup();
+    return;
+  }
+  doc.open();
+  doc.write(html);
+  doc.close();
 }
 
 /* ───────────────────── helpers ───────────────────── */

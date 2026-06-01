@@ -268,7 +268,7 @@ def add_message(
     role: str,
     content: str,
     sources: list[dict] | None = None,
-    attachments: list[str] | None = None,
+    attachments: list | None = None,
 ) -> dict:
     sources_payload = json.dumps(sources or [])
     attachments_payload = json.dumps(attachments or [])

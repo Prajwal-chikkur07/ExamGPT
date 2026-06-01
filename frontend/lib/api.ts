@@ -1,4 +1,5 @@
 import type {
+  AttachmentRef,
   Conversation,
   Definition,
   DocumentMeta,
@@ -101,7 +102,7 @@ export const chatApi = {
       signal?: AbortSignal;
       regenerate?: boolean;
       inlineContext?: string;
-      attachmentNames?: string[];
+      attachments?: AttachmentRef[];
     }
   ) => {
     const res = await fetch(`${API_URL}/api/chat/stream`, {
@@ -113,7 +114,7 @@ export const chatApi = {
         answer_style: style,
         regenerate: handlers.regenerate ?? false,
         inline_context: handlers.inlineContext ?? null,
-        attachment_names: handlers.attachmentNames ?? [],
+        attachments: handlers.attachments ?? [],
       }),
       signal: handlers.signal,
     });

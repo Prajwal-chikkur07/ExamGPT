@@ -189,7 +189,7 @@ def answer(
     style: str,
     regenerate: bool = False,
     inline_context: str | None = None,
-    attachment_names: list[str] | None = None,
+    attachments: list | None = None,
 ) -> tuple[str, list[SourceCitation]]:
     settings = get_settings()
     if regenerate:
@@ -201,7 +201,7 @@ def answer(
             conversation_id,
             "user",
             question,
-            attachments=attachment_names,
+            attachments=attachments,
         )
         _maybe_set_title(conversation_id, question)
 
@@ -256,7 +256,7 @@ def answer_stream(
     style: str,
     regenerate: bool = False,
     inline_context: str | None = None,
-    attachment_names: list[str] | None = None,
+    attachments: list | None = None,
 ) -> tuple[Iterator[str], list[SourceCitation], callable]:
     """Streaming answer with citation stripping applied on finalize.
 
@@ -274,7 +274,7 @@ def answer_stream(
             conversation_id,
             "user",
             question,
-            attachments=attachment_names,
+            attachments=attachments,
         )
         _maybe_set_title(conversation_id, question)
 
