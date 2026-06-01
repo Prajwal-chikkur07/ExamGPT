@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookMarked, FolderClosed } from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { ChatList } from "./chat-list";
 
@@ -58,11 +59,20 @@ export function SidebarContent({ onNavigate }: Props) {
         </Link>
       </div>
 
-      <div
-        className="px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-paper-muted/70 text-center border-t border-paper-border/60"
-        style={{ fontFamily: "var(--font-serif)" }}
-      >
-        Grounded in your uploads
+      <div className="flex items-center justify-between px-4 py-3 border-t border-paper-border/60">
+        <UserButton
+          appearance={{
+            elements: {
+              userButtonAvatarBox: "h-7 w-7",
+            },
+          }}
+        />
+        <span
+          className="text-[10px] uppercase tracking-[0.18em] text-paper-muted/70"
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
+          Grounded in uploads
+        </span>
       </div>
     </div>
   );
