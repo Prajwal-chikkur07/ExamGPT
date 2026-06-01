@@ -2,11 +2,19 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://examgpt-backend-m5xf.onrender.com"
+    "NEXT_PUBLIC_API_URL": "https://examgpt-backend-m5xf.onrender.com",
+    "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
+    "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "/sign-up",
+    "NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL": "/",
+    "NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL": "/"
   },
   "build": {
     "env": {
-      "NEXT_PUBLIC_API_URL": "https://examgpt-backend-m5xf.onrender.com"
+      "NEXT_PUBLIC_API_URL": "https://examgpt-backend-m5xf.onrender.com",
+      "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
+      "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "/sign-up",
+      "NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL": "/",
+      "NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL": "/"
     }
   }
 }

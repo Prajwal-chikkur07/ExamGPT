@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { Toaster } from "@/components/ui/sonner";
@@ -19,11 +20,23 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-[100dvh]">
-        <AppShell>{children}</AppShell>
-        <Toaster richColors theme="dark" position="top-center" />
-      </body>
-    </html>
+    <ClerkProvider
+      appearance={{
+        variables: {
+          colorPrimary: "hsl(28, 30%, 12%)",
+          colorBackground: "hsl(42, 36%, 94%)",
+          colorText: "hsl(28, 30%, 12%)",
+          borderRadius: "0.5rem",
+          fontFamily: "var(--font-sans)",
+        },
+      }}
+    >
+      <html lang="en" className="dark">
+        <body className="min-h-[100dvh]">
+          <AppShell>{children}</AppShell>
+          <Toaster richColors theme="dark" position="top-center" />
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
