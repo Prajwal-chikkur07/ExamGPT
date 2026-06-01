@@ -1,31 +1,28 @@
 """Production-grade retrieval over Postgres + pgvector.
 
 Pipeline per query:
-    1. Embed the query with the configured local model.
+    1. Embed the query with Gemini `text-embedding-004` (384-dim, RETRIEVAL_QUERY).
     2. Run two retrievers in parallel:
          - dense: pgvector cosine ANN search (HNSW)
          - lexical: Postgres full-text BM25-style search via `tsvector`
     3. Fuse the two ranked lists via Reciprocal Rank Fusion (RRF).
-    4. Rerank the top candidates with a cross-encoder for final ordering.
-
-This combination consistently beats either retriever alone on RAG benchmarks.
+    4. Take the top fused candidates; score them by query-vs-chunk cosine
+       similarity so the UI gets an interpretable [0, 1] confidence value.
 """
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Optional
 
 import numpy as np
 
 from app.config import get_settings
-from app.core import reranker
 from app.core.db import get_conn
+from app.core.embeddings import embed_documents, embed_query
 
 
-# Bounded thread pool so dense + lexical retrievers run in parallel.
 _RETRIEVE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="retrieve")
 
 
@@ -36,21 +33,6 @@ class RetrievedChunk:
     page: int
     text: str
     score: float
-
-
-@lru_cache
-def _embedder():
-    """Local embedding model. Imported lazily because it's heavy."""
-    from sentence_transformers import SentenceTransformer
-
-    settings = get_settings()
-    return SentenceTransformer(settings.embedding_model)
-
-
-def _embed(texts: list[str]) -> list[np.ndarray]:
-    model = _embedder()
-    vectors = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
-    return [np.asarray(v, dtype=np.float32) for v in vectors]
 
 
 # ---------- writes ----------
@@ -64,7 +46,7 @@ def add_chunks(
     if not chunks:
         return 0
     texts = [c[1] for c in chunks]
-    embeddings = _embed(texts)
+    embeddings = embed_documents(texts)
     rows = [
         (
             f"{document_id}_{i}",
@@ -160,17 +142,31 @@ def _rrf_fuse(rankings: list[list[dict]], k: int = 60) -> list[dict]:
     return out
 
 
+def _cosine_scores_for(ids: list[str], embedding: np.ndarray) -> dict[str, float]:
+    """Compute cosine similarity for an explicit set of chunk ids. Used to backfill
+    scores for fused chunks that only came from the lexical retriever."""
+    if not ids:
+        return {}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, 1 - (embedding <=> %s) AS score "
+                "FROM chunks WHERE id = ANY(%s)",
+                [embedding, ids],
+            )
+            return {row["id"]: float(row["score"]) for row in cur.fetchall()}
+
+
 def query(
     text: str,
     top_k: Optional[int] = None,
     document_id: Optional[str] = None,
 ) -> list[RetrievedChunk]:
-    """Hybrid retrieval → RRF → cross-encoder rerank."""
+    """Hybrid retrieval (dense + lexical) → RRF fusion → top-k with cosine scores."""
     settings = get_settings()
     final_k = top_k or settings.rerank_top_k
 
-    embedding = _embed([text])[0]
-    # Run dense + lexical concurrently — each is its own DB round-trip.
+    embedding = embed_query(text)
     dense_future = _RETRIEVE_POOL.submit(
         _dense_search, embedding, settings.retrieve_top_k, document_id
     )
@@ -184,32 +180,27 @@ def query(
     if not fused:
         return []
 
-    # Rerank just enough candidates to get a solid final-k — fewer is faster.
-    rerank_pool = fused[: max(final_k * 2, 8)]
-    passages = [r["content"] for r in rerank_pool]
-    ranked = reranker.rerank(text, passages, top_k=final_k)
+    final = fused[:final_k]
+
+    cosine_by_id = {r["id"]: float(r["score"]) for r in dense}
+    missing = [r["id"] for r in final if r["id"] not in cosine_by_id]
+    if missing:
+        cosine_by_id.update(_cosine_scores_for(missing, embedding))
 
     out: list[RetrievedChunk] = []
-    for idx, score in ranked:
-        r = rerank_pool[idx]
+    for r in final:
+        score = cosine_by_id.get(r["id"], 0.0)
+        score = max(0.0, min(1.0, score))
         out.append(
             RetrievedChunk(
                 document_id=r["document_id"],
                 filename=r["filename"],
                 page=int(r["page"]),
                 text=r["content"],
-                # Normalize cross-encoder score to roughly [0, 1] for the UI confidence bar.
-                # ms-marco scores are unbounded logits; a sigmoid keeps them comparable.
-                score=_sigmoid(score),
+                score=score,
             )
         )
     return out
-
-
-def _sigmoid(x: float) -> float:
-    import math
-
-    return 1.0 / (1.0 + math.exp(-x))
 
 
 def stats() -> dict:
