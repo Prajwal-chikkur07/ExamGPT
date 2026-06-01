@@ -3,6 +3,8 @@
   "framework": "nextjs",
   "env": {
     "NEXT_PUBLIC_API_URL": "https://examgpt-backend-m5xf.onrender.com",
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_Y29uY2lzZS1saXphcmQtNjAuY2xlcmsuYWNjb3VudHMuZGV2JA",
+    "CLERK_SECRET_KEY": "sk_test_wSlmP6Cc88hLsjMOGm7km9Nj0jsxtTa2txazy9yYmP",
     "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
     "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "/sign-up",
     "NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL": "/",
@@ -11,6 +13,8 @@
   "build": {
     "env": {
       "NEXT_PUBLIC_API_URL": "https://examgpt-backend-m5xf.onrender.com",
+      "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_Y29uY2lzZS1saXphcmQtNjAuY2xlcmsuYWNjb3VudHMuZGV2JA",
+      "CLERK_SECRET_KEY": "sk_test_wSlmP6Cc88hLsjMOGm7km9Nj0jsxtTa2txazy9yYmP",
       "NEXT_PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
       "NEXT_PUBLIC_CLERK_SIGN_UP_URL": "/sign-up",
       "NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL": "/",
