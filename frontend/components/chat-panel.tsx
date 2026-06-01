@@ -49,52 +49,11 @@ interface Props {
   conversationId: string;
 }
 
-interface PaperHeader {
-  marks: number | null;
-  topic: string | null;
-  type: string | null;
-}
-
 interface Turn {
   user: ChatMessage | null;
   assistants: ChatMessage[];
   /** Index of `assistants[0]` in the flat `messages` array (or -1). */
   firstAssistantIndex: number;
-}
-
-function detectHeader(question: string): PaperHeader {
-  const q = question.toLowerCase();
-  const marksMatches = Array.from(
-    q.matchAll(/(\b|\[|\()\s*(\d{1,2})\s*[- ]?\s*(?:mark|marks|m)\b/g)
-  )
-    .map((m) => parseInt(m[2], 10))
-    .filter((n) => n >= 1 && n <= 20);
-  let marks: number | null = marksMatches.length ? Math.max(...marksMatches) : null;
-  if (marks === null) {
-    if (/\b(define|definition)\b/.test(q)) marks = 2;
-    else if (/\b(essay|elaborate|in detail|with example|long)\b/.test(q)) marks = 10;
-    else if (/\b(explain|describe|discuss)\b/.test(q)) marks = 5;
-  }
-  let type: string | null = null;
-  if (/\b(mcq|multiple choice)\b/.test(q)) type = "MCQ";
-  else if (/\b(compare|differentiate|vs|versus)\b/.test(q)) type = "Compare";
-  else if (/\b(define|definition)\b/.test(q)) type = "Define";
-  else if (/\b(algorithm|pseudocode|steps?)\b/.test(q)) type = "Algorithm";
-  else if (/\b(numerical|solve|calculate|compute|find)\b/.test(q)) type = "Numerical";
-  else if (/\b(diagram|draw|flowchart)\b/.test(q)) type = "Diagram";
-  else if (/\b(explain|describe|discuss|elaborate)\b/.test(q)) type = "Explain";
-  let topic: string | null = null;
-  const topicMatch = q.match(
-    /\b(dbms|ai|ml|os|dsa|cn|toc|coa|hci|sepm|se|java|python|c\+\+|sql|html|css|js|react|node)\b/i
-  );
-  if (topicMatch) topic = topicMatch[1].toUpperCase();
-  return { marks, topic, type };
-}
-
-function isCasualQuestion(question: string): boolean {
-  const q = (question ?? "").trim().toLowerCase().replace(/[?!.,]+$/, "");
-  if (!q) return true;
-  return /^(hi|hii|hey|hello|yo|thanks|thank you|thx|ok|okay|bye|good (morning|night|evening|afternoon))$/.test(q);
 }
 
 function TypingInk() {
@@ -535,97 +494,57 @@ function TurnBlock({
   onViewSources: (sources: SourceCitation[], title: string) => void;
 }) {
   const question = turn.user?.content ?? "";
-  const header = useMemo(() => detectHeader(question), [question]);
-  const casual = isCasualQuestion(question);
-
   const totalAssistants = turn.assistants.length;
   const safeIdx = Math.min(Math.max(variantIndex, 0), Math.max(0, totalAssistants - 1));
   const activeAssistant = totalAssistants > 0 ? turn.assistants[safeIdx] : null;
   const assistantContent = streaming ? streamedContent : activeAssistant?.content ?? "";
   const assistantSources = (activeAssistant?.sources as SourceCitation[] | undefined) ?? [];
 
-  /* ── Casual replies: keep light, single-column ── */
-  if (casual && !streaming && turn.user) {
-    return (
-      <section className="animate-fade-in py-3 mb-2">
-        <div className="text-[14px] text-paper-muted mb-1.5">
-          <span className="text-paper-muted/70 mr-2">You:</span>
-          {turn.user.content}
-        </div>
-        <div className="markdown text-paper-foreground">
-          {assistantContent ? <Markdown>{assistantContent}</Markdown> : <TypingInk />}
-        </div>
-        {activeAssistant && (
-          <MessageActions
-            text={activeAssistant.content}
-            feedback={feedback}
-            onFeedback={setFeedback}
-            onRegenerate={canRegenerate ? onRegenerate : undefined}
-            canRegenerate={canRegenerate}
-          />
-        )}
-        {showDivider && <SectionDivider />}
-      </section>
-    );
-  }
-
   return (
-    <section className="animate-fade-in mb-2">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-8">
-        {/* ─── Left column: question ─── */}
-        <div className="md:col-span-4 md:sticky md:top-6 self-start">
-          <div className="flex flex-wrap items-center gap-1.5 mb-3">
-            {header.topic && <PaperBadge>{header.topic}</PaperBadge>}
-            {header.type && <PaperBadge>{header.type}</PaperBadge>}
-            {header.marks !== null && <PaperBadge accent>{header.marks} Marks</PaperBadge>}
-          </div>
-          {turn.user?.attachments && turn.user.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {turn.user.attachments.map((name, j) => {
-                const preview = turn.user?.attachmentPreviews?.[j];
-                if (preview) {
-                  return (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={`${name}-${j}`}
-                      src={preview}
-                      alt={name}
-                      title={name}
-                      className="max-h-40 max-w-full rounded-md border border-paper-border object-contain"
-                    />
-                  );
-                }
-                return (
-                  <div
-                    key={`${name}-${j}`}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-paper-border/70 bg-paper-foreground/5 text-paper-foreground/85 px-2 py-1 text-xs"
-                  >
-                    <FileIcon className="h-3.5 w-3.5" />
-                    <span className="max-w-[200px] truncate">{name}</span>
-                  </div>
-                );
-              })}
+    <section className="animate-fade-in mb-8">
+      {turn.user && (
+        <div className="mb-4 flex justify-end">
+          <div className="max-w-[82%] md:max-w-[70%] rounded-2xl bg-paper-foreground text-paper px-4 py-3 shadow-sm">
+            <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
+              {turn.user.content}
             </div>
-          )}
-          <div className="flex items-start gap-2.5">
-            <span
-              className="text-paper-muted text-base mt-0.5 shrink-0"
-              style={{ fontFamily: "var(--font-serif)" }}
-            >
-              Q.
-            </span>
-            <h2
-              className="text-[15.5px] md:text-base leading-snug text-paper-foreground font-medium"
-              style={{ fontFamily: "var(--font-serif)" }}
-            >
-              {question}
-            </h2>
           </div>
         </div>
+      )}
 
-        {/* ─── Right column: answer ─── */}
-        <div className="md:col-span-8 min-w-0">
-          {/* Variant nav row */}
+      {turn.user?.attachments && turn.user.attachments.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <div className="max-w-[82%] md:max-w-[70%] flex flex-wrap justify-end gap-2">
+            {turn.user.attachments.map((name, j) => {
+              const preview = turn.user?.attachmentPreviews?.[j];
+              if (preview) {
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={`${name}-${j}`}
+                    src={preview}
+                    alt={name}
+                    title={name}
+                    className="max-h-40 max-w-full rounded-md border border-paper-border object-contain"
+                  />
+                );
+              }
+              return (
+                <div
+                  key={`${name}-${j}`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-paper-border/70 bg-paper-foreground/5 text-paper-foreground/85 px-2 py-1 text-xs"
+                >
+                  <FileIcon className="h-3.5 w-3.5" />
+                  <span className="max-w-[200px] truncate">{name}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-start">
+        <div className="w-full max-w-3xl min-w-0">
           {totalAssistants > 1 && !streaming && (
             <div className="flex items-center gap-1 mb-2 text-paper-muted">
               <button
@@ -655,7 +574,7 @@ function TurnBlock({
             </div>
           )}
 
-          <div className="markdown min-h-[2rem]">
+          <div className="markdown min-h-[2rem] text-paper-foreground">
             {assistantContent ? (
               <Markdown>{assistantContent}</Markdown>
             ) : streaming ? (
@@ -691,7 +610,7 @@ function TurnBlock({
         </div>
       </div>
 
-      {showDivider && <SectionDivider />}
+      {showDivider && <div className="my-8 border-t border-paper-border/60" />}
     </section>
   );
 }
@@ -772,36 +691,6 @@ function BlankPageHint() {
         </span>
         . Attach a question paper with the + below.
       </p>
-    </div>
-  );
-}
-
-function PaperBadge({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center text-[10.5px] uppercase tracking-[0.14em] font-semibold px-2 py-0.5 rounded-full",
-        accent
-          ? "bg-paper-accent/90 text-paper border border-paper-accent"
-          : "bg-paper-foreground/8 text-paper-foreground/85 border border-paper-border/60"
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-function SectionDivider() {
-  return (
-    <div className="my-8 flex items-center gap-3 text-paper-muted/60" aria-hidden>
-      <div className="flex-1 border-t border-dashed border-paper-border/70" />
-      <span
-        className="text-[10px] uppercase tracking-[0.22em]"
-        style={{ fontFamily: "var(--font-serif)" }}
-      >
-        ✦
-      </span>
-      <div className="flex-1 border-t border-dashed border-paper-border/70" />
     </div>
   );
 }
