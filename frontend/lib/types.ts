@@ -24,13 +24,23 @@ export interface Conversation {
   message_count: number;
 }
 
+/** Persisted attachment metadata. Older rows may still be plain strings (just the
+ *  filename); newer ones are objects, with `dataUrl` populated for images so the
+ *  preview survives a page reload. */
+export interface MessageAttachment {
+  name: string;
+  dataUrl?: string | null;
+}
+
+export type AttachmentRef = string | MessageAttachment;
+
 export interface Message {
   id: string;
   conversation_id: string;
   role: "user" | "assistant";
   content: string;
   sources: SourceCitation[];
-  attachments?: string[];
+  attachments?: AttachmentRef[];
   created_at: string;
 }
 
@@ -40,10 +50,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: SourceCitation[];
-  /** Filenames attached to this user turn (session-only, not persisted yet). */
-  attachments?: string[];
-  /** Per-attachment object-URLs for image previews; entries are null for non-images. */
-  attachmentPreviews?: (string | null)[];
+  attachments?: AttachmentRef[];
 }
 
 export interface ExamQuestionResult {

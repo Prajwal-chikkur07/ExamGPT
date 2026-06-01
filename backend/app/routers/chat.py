@@ -61,6 +61,13 @@ async def extract(files: list[UploadFile] = File(...)):
     return {"files": out}
 
 
+def _coerce_attachments(payload: ChatRequest) -> list:
+    """Prefer the new rich `attachments` field; fall back to legacy filename list."""
+    if payload.attachments:
+        return payload.attachments
+    return list(payload.attachment_names or [])
+
+
 @router.post("", response_model=ChatResponse)
 def chat(payload: ChatRequest):
     if not store.get_conversation(payload.conversation_id):
@@ -71,7 +78,7 @@ def chat(payload: ChatRequest):
         payload.answer_style,
         regenerate=payload.regenerate,
         inline_context=payload.inline_context,
-        attachment_names=payload.attachment_names,
+        attachments=_coerce_attachments(payload),
     )
     return ChatResponse(
         answer=text, sources=citations, conversation_id=payload.conversation_id
@@ -97,7 +104,7 @@ def chat_stream(payload: ChatRequest):
         payload.answer_style,
         regenerate=payload.regenerate,
         inline_context=payload.inline_context,
-        attachment_names=payload.attachment_names,
+        attachments=_coerce_attachments(payload),
     )
 
     def event_stream():

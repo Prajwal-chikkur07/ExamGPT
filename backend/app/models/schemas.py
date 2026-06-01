@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
@@ -43,7 +43,9 @@ class Message(BaseModel):
     role: str
     content: str
     sources: list[dict] = []
-    attachments: list[str] = []
+    # Each attachment is either a legacy plain filename or an object like
+    # {name, data_url?} for newer rows that persist image previews.
+    attachments: list[Any] = []
     created_at: str
 
 
@@ -63,7 +65,11 @@ class ChatRequest(BaseModel):
     answer_style: str = "detailed"  # short | detailed | exam
     regenerate: bool = False  # if true, drop the last assistant message and re-answer
     inline_context: Optional[str] = None  # one-shot context (chat attachments), not indexed
-    attachment_names: list[str] = Field(default_factory=list)  # persisted with the user msg
+    # Each entry is either a legacy plain filename or an object like
+    # {name, data_url?}. Persisted verbatim with the user message.
+    attachments: list[Any] = Field(default_factory=list)
+    # Legacy field — older clients send just filenames. Merged with `attachments`.
+    attachment_names: list[str] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):

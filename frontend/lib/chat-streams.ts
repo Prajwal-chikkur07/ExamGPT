@@ -9,7 +9,7 @@
  */
 
 import { chatApi } from "./api";
-import type { SourceCitation } from "./types";
+import type { AttachmentRef, SourceCitation } from "./types";
 
 export interface StreamState {
   conversationId: string;
@@ -77,10 +77,10 @@ class StreamRegistry {
     style: string;
     regenerate?: boolean;
     inlineContext?: string;
-    attachmentNames?: string[];
+    attachments?: AttachmentRef[];
     onComplete?: () => void;
   }) {
-    const { conversationId, question, style, regenerate = false, inlineContext, attachmentNames } = opts;
+    const { conversationId, question, style, regenerate = false, inlineContext, attachments } = opts;
     // Replace any existing stream for this conversation.
     this.abort(conversationId);
     const existingTimer = this.cleanupTimers.get(conversationId);
@@ -108,7 +108,7 @@ class StreamRegistry {
         signal: controller.signal,
         regenerate,
         inlineContext,
-        attachmentNames,
+        attachments,
         onSources: (sources) => {
           const s = this.streams.get(conversationId);
           if (!s) return;

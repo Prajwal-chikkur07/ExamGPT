@@ -40,7 +40,20 @@ import { chatStreams } from "@/lib/chat-streams";
 import { downloadMarkdown, downloadPDF, downloadText, downloadWord } from "@/lib/download";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import type { ChatMessage, SourceCitation } from "@/lib/types";
+import type { AttachmentRef, ChatMessage, MessageAttachment, SourceCitation } from "@/lib/types";
+
+function asAttachment(ref: AttachmentRef): MessageAttachment {
+  return typeof ref === "string" ? { name: ref } : ref;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result ?? ""));
+    r.onerror = () => reject(r.error ?? new Error("read failed"));
+    r.readAsDataURL(file);
+  });
+}
 
 const UPLOAD_ACCEPT = ".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp";
 const MAX_VARIANTS = 5;
@@ -203,15 +216,26 @@ export function ChatPanel({ conversationId }: Props) {
     const text = input.trim();
     if ((!text && pendingAttachments.length === 0) || streaming || uploadingForMessage) return;
 
-    const attachments = pendingAttachments;
-    const attachmentNames = attachments.map((f) => f.name);
+    const files = pendingAttachments;
     const userText =
       text ||
-      (attachmentNames.length
-        ? `Solve / analyze the attached ${attachmentNames.length === 1 ? "file" : "files"}.`
+      (files.length
+        ? `Solve / analyze the attached ${files.length === 1 ? "file" : "files"}.`
         : "");
-    const previewUrls = attachments.map((f) =>
-      f.type.startsWith("image/") ? URL.createObjectURL(f) : null
+
+    // Build rich attachment metadata. Images carry a data URL so the preview
+    // survives a page refresh — non-images carry just the name.
+    const richAttachments: MessageAttachment[] = await Promise.all(
+      files.map(async (f) => {
+        if (f.type.startsWith("image/")) {
+          try {
+            return { name: f.name, dataUrl: await fileToDataUrl(f) };
+          } catch {
+            return { name: f.name };
+          }
+        }
+        return { name: f.name };
+      })
     );
 
     setPendingAttachments([]);
@@ -221,18 +245,17 @@ export function ChatPanel({ conversationId }: Props) {
       {
         role: "user",
         content: userText,
-        attachments: attachmentNames,
-        attachmentPreviews: previewUrls,
+        attachments: richAttachments,
       } as ChatMessage,
     ]);
 
     let inlineContext: string | undefined;
-    if (attachments.length > 0) {
+    if (files.length > 0) {
       setUploadingForMessage(true);
       setStreaming(true);
       setStreamedContent("");
       try {
-        const result = await documentsApi.extract(attachments);
+        const result = await documentsApi.extract(files);
         const parts: string[] = [];
         for (const f of result.files) {
           if (f.error) {
@@ -261,7 +284,7 @@ export function ChatPanel({ conversationId }: Props) {
       style: "detailed",
       regenerate: false,
       inlineContext,
-      attachmentNames: attachmentNames.length ? attachmentNames : undefined,
+      attachments: richAttachments.length ? richAttachments : undefined,
     });
   }
 
@@ -500,45 +523,21 @@ function TurnBlock({
   const assistantContent = streaming ? streamedContent : activeAssistant?.content ?? "";
   const assistantSources = (activeAssistant?.sources as SourceCitation[] | undefined) ?? [];
 
+  const userAttachments = (turn.user?.attachments ?? []).map(asAttachment);
+
   return (
     <section className="animate-fade-in mb-8">
-      {turn.user && (
+      {turn.user && (userAttachments.length > 0 || turn.user.content) && (
         <div className="mb-4 flex justify-end">
-          <div className="max-w-[82%] md:max-w-[70%] rounded-2xl bg-paper-foreground text-paper px-4 py-3 shadow-sm">
-            <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
-              {turn.user.content}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {turn.user?.attachments && turn.user.attachments.length > 0 && (
-        <div className="mb-4 flex justify-end">
-          <div className="max-w-[82%] md:max-w-[70%] flex flex-wrap justify-end gap-2">
-            {turn.user.attachments.map((name, j) => {
-              const preview = turn.user?.attachmentPreviews?.[j];
-              if (preview) {
-                return (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={`${name}-${j}`}
-                    src={preview}
-                    alt={name}
-                    title={name}
-                    className="max-h-40 max-w-full rounded-md border border-paper-border object-contain"
-                  />
-                );
-              }
-              return (
-                <div
-                  key={`${name}-${j}`}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-paper-border/70 bg-paper-foreground/5 text-paper-foreground/85 px-2 py-1 text-xs"
-                >
-                  <FileIcon className="h-3.5 w-3.5" />
-                  <span className="max-w-[200px] truncate">{name}</span>
-                </div>
-              );
-            })}
+          <div className="max-w-[82%] md:max-w-[70%] rounded-2xl bg-paper-foreground text-paper px-4 py-3 shadow-sm space-y-3">
+            {userAttachments.length > 0 && (
+              <UserAttachmentsBlock attachments={userAttachments} />
+            )}
+            {turn.user.content && (
+              <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
+                {turn.user.content}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -647,24 +646,97 @@ function OverflowMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Download as</DropdownMenuLabel>
-        <DropdownMenuItem onSelect={() => downloadPDF(content, title)}>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            // Defer past Radix's focus-return so the iframe/print and blob-click
+            // run with the document in a stable state.
+            e.preventDefault();
+            setTimeout(() => downloadPDF(content, title), 0);
+          }}
+        >
           <FileType2 className="h-3.5 w-3.5" />
           PDF
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => downloadWord(content, title)}>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setTimeout(() => downloadWord(content, title), 0);
+          }}
+        >
           <FileType2 className="h-3.5 w-3.5" />
           Word (.doc)
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => downloadMarkdown(content, title)}>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setTimeout(() => downloadMarkdown(content, title), 0);
+          }}
+        >
           <Download className="h-3.5 w-3.5" />
           Markdown (.md)
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => downloadText(content, title)}>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setTimeout(() => downloadText(content, title), 0);
+          }}
+        >
           <Download className="h-3.5 w-3.5" />
           Plain text (.txt)
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/* ───────────────────── User attachments (grouped) ───────────────────── */
+
+function UserAttachmentsBlock({ attachments }: { attachments: MessageAttachment[] }) {
+  const images = attachments.filter((a) => a.dataUrl);
+  const files = attachments.filter((a) => !a.dataUrl);
+
+  return (
+    <div className="space-y-2">
+      {images.length > 0 && (
+        <div
+          className={cn(
+            "grid gap-1.5 rounded-lg overflow-hidden",
+            images.length === 1
+              ? "grid-cols-1"
+              : images.length === 2
+                ? "grid-cols-2"
+                : "grid-cols-2 sm:grid-cols-3"
+          )}
+        >
+          {images.map((a, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={`${a.name}-${i}`}
+              src={a.dataUrl ?? ""}
+              alt={a.name}
+              title={a.name}
+              className={cn(
+                "w-full object-cover bg-paper/10 rounded-md",
+                images.length === 1 ? "max-h-72" : "h-32 sm:h-36"
+              )}
+            />
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {files.map((a, i) => (
+            <div
+              key={`${a.name}-${i}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-paper/20 bg-paper/10 text-paper px-2 py-1 text-xs"
+            >
+              <FileIcon className="h-3.5 w-3.5" />
+              <span className="max-w-[200px] truncate">{a.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
