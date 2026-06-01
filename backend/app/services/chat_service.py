@@ -42,7 +42,8 @@ _TRIVIAL_PHRASES = (
     "what's your name",
 )
 
-# If the best reranker score is below this, treat as no-match and switch to casual mode.
+# If the best chunk's cosine similarity is below this, treat as no-match
+# and switch to casual mode.
 _RELEVANCE_THRESHOLD = 0.30
 
 

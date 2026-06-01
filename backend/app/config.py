@@ -9,11 +9,6 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
-    # Embedding (384-dim). bge-small is one of the strongest 384-dim models per MTEB.
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
-    # Cross-encoder reranker — small + fast (~90 MB).
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-
     database_url: str = ""
     upload_dir: str = "./data/uploads"
 

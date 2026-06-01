@@ -22,7 +22,7 @@ from psycopg_pool import ConnectionPool
 from app.config import get_settings
 
 
-EMBEDDING_DIM = 384  # bge-small-en-v1.5 / MiniLM share the same 384 dim
+EMBEDDING_DIM = 384  # Gemini text-embedding-004 truncated via Matryoshka representation
 
 
 SCHEMA_SQL = f"""
