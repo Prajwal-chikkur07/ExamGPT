@@ -14,7 +14,6 @@ langchain-text-splitters==0.3.2
 # Vector store + DB
 psycopg[binary,pool]==3.2.3
 pgvector==0.3.6
-numpy==2.1.3
 
 # Document parsing
 pypdf==5.1.0
