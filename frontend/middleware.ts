@@ -6,8 +6,12 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    await auth.protect();
+  if (isPublicRoute(req)) return;
+  // In Clerk v7, `auth.protect()` responds with 404 for unauthenticated
+  // requests instead of redirecting — so we explicitly redirect to sign-in.
+  const { userId, redirectToSignIn } = await auth();
+  if (!userId) {
+    return redirectToSignIn({ returnBackUrl: req.url });
   }
 });
 

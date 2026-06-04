@@ -56,7 +56,14 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 const UPLOAD_ACCEPT = ".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp";
+const UPLOAD_ACCEPT_EXTS = UPLOAD_ACCEPT.split(",").map((s) => s.trim().toLowerCase());
 const MAX_VARIANTS = 5;
+
+function isAcceptedFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const lower = file.name.toLowerCase();
+  return UPLOAD_ACCEPT_EXTS.some((ext) => lower.endsWith(ext));
+}
 
 interface Props {
   conversationId: string;
@@ -69,12 +76,49 @@ interface Turn {
   firstAssistantIndex: number;
 }
 
-function TypingInk() {
+/** Status messages shown while the assistant works, tailored to the question.
+ * The first is always the retrieval step; later ones reflect the kind of task. */
+function thinkingPhrases(question: string): string[] {
+  const s = question.toLowerCase();
+  const base = "Searching your notes…";
+  if (/\b(solve|answer|marks?|question paper|q\d|problem|numerical)\b/.test(s))
+    return [base, "Working through it…", "Writing your answer…"];
+  if (/\b(note|notes|summar|revision|revise|flashcard|one[- ]?page)\b/.test(s))
+    return [base, "Organizing the key points…", "Drafting your notes…"];
+  if (/\b(important|probable|expected|predict|likely)\b/.test(s))
+    return [base, "Spotting likely questions…", "Preparing the list…"];
+  if (/\b(explain|what|why|how|describe|define|difference|compare|list|types?)\b/.test(s))
+    return [base, "Thinking…", "Writing the explanation…"];
+  return [base, "Thinking…", "Writing…"];
+}
+
+function TypingInk({ question = "" }: { question?: string }) {
+  const phrases = useMemo(() => thinkingPhrases(question), [question]);
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    setIdx(0);
+    if (phrases.length <= 1) return;
+    // Advance through the phrases, then hold on the last one until tokens arrive.
+    const id = setInterval(() => {
+      setIdx((prev) => (prev < phrases.length - 1 ? prev + 1 : prev));
+    }, 1800);
+    return () => clearInterval(id);
+  }, [phrases]);
+
   return (
-    <div className="inline-flex items-center gap-1.5 py-1" aria-label="Thinking">
-      <span className="h-1.5 w-1.5 rounded-full bg-paper-muted/80 animate-ink-pulse" style={{ animationDelay: "0ms" }} />
-      <span className="h-1.5 w-1.5 rounded-full bg-paper-muted/80 animate-ink-pulse" style={{ animationDelay: "200ms" }} />
-      <span className="h-1.5 w-1.5 rounded-full bg-paper-muted/80 animate-ink-pulse" style={{ animationDelay: "400ms" }} />
+    <div
+      className="inline-flex items-center gap-2 py-1 text-paper-muted"
+      aria-label="Thinking"
+      aria-live="polite"
+    >
+      <span className="text-sm italic" style={{ fontFamily: "var(--font-serif)" }}>
+        {phrases[idx]}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-paper-muted/80 animate-ink-pulse" style={{ animationDelay: "0ms" }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-paper-muted/80 animate-ink-pulse" style={{ animationDelay: "200ms" }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-paper-muted/80 animate-ink-pulse" style={{ animationDelay: "400ms" }} />
+      </span>
     </div>
   );
 }
@@ -87,6 +131,8 @@ export function ChatPanel({ conversationId }: Props) {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
   const [uploadingForMessage, setUploadingForMessage] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragDepthRef = useRef(0);
   const [feedback, setFeedback] = useState<Record<number, "like" | "dislike" | null>>({});
   /** Currently-visible variant index PER TURN, keyed by firstAssistantIndex. */
   const [variantIndex, setVariantIndex] = useState<Record<number, number>>({});
@@ -97,6 +143,9 @@ export function ChatPanel({ conversationId }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  // Set when the user initiates a send/regenerate: forces a scroll-to-bottom on
+  // the next layout pass regardless of current scroll position.
+  const forceScrollRef = useRef(false);
   const upsertConversation = useAppStore((s) => s.upsertConversation);
 
   /** Group messages into turns. Consecutive assistant messages after a user msg
@@ -127,11 +176,72 @@ export function ChatPanel({ conversationId }: Props) {
 
   function addPendingAttachments(files: File[]) {
     if (!files.length) return;
-    setPendingAttachments((prev) => [...prev, ...files]);
+    const accepted: File[] = [];
+    const rejected: string[] = [];
+    for (const f of files) {
+      if (isAcceptedFile(f)) accepted.push(f);
+      else rejected.push(f.name);
+    }
+    if (rejected.length) {
+      toast.error(
+        `Skipped ${rejected.length} unsupported file${rejected.length === 1 ? "" : "s"}`,
+        { description: rejected.join(", ") }
+      );
+    }
+    if (!accepted.length) return;
+    setPendingAttachments((prev) => [...prev, ...accepted]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
   function removePendingAttachment(index: number) {
     setPendingAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (streaming || uploadingForMessage) return;
+    const items = e.clipboardData?.items;
+    if (!items?.length) return;
+    const files: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      // Pasted images often arrive as "image.png" — keep clipboard-pasted
+      // images, but don't block normal text paste.
+      e.preventDefault();
+      addPendingAttachments(files);
+    }
+  }
+
+  function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
+    if (streaming || uploadingForMessage) return;
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDragging(true);
+  }
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (streaming || uploadingForMessage) return;
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDragging(false);
+  }
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDragging(false);
+    if (streaming || uploadingForMessage) return;
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) addPendingAttachments(files);
   }
 
   useEffect(() => {
@@ -168,29 +278,42 @@ export function ChatPanel({ conversationId }: Props) {
 
     const unsubscribe = chatStreams.subscribe(conversationId, (state) => {
       if (cancelled) return;
-      setStreaming(state.isStreaming);
-      setStreamedContent(state.content);
-      if (state.error) toast.error("Error", { description: state.error });
-      if (!state.isStreaming && !state.error) {
-        Promise.all([
-          conversationsApi.get(conversationId).then(upsertConversation).catch(() => null),
-          conversationsApi
-            .messages(conversationId)
-            .then((msgs) => {
-              if (cancelled) return;
-              setMessages(
-                msgs.map((m) => ({
-                  role: m.role,
-                  content: m.content,
-                  sources: m.sources ?? [],
-                  attachments: m.attachments ?? [],
-                }))
-              );
-              setStreamedContent("");
-            })
-            .catch(() => null),
-        ]);
+      if (state.error) {
+        toast.error("Error", { description: state.error });
+        setStreaming(false);
+        setStreamedContent("");
+        return;
       }
+      if (state.isStreaming) {
+        setStreaming(true);
+        setStreamedContent(state.content);
+        return;
+      }
+      // Stream finished. Keep showing the streamed text (streaming stays true)
+      // until the persisted message has loaded, then swap both off in the same
+      // commit — otherwise the answer briefly disappears and the page jumps.
+      setStreamedContent(state.content);
+      Promise.all([
+        conversationsApi.get(conversationId).then(upsertConversation).catch(() => null),
+        conversationsApi
+          .messages(conversationId)
+          .then((msgs) => {
+            if (cancelled) return;
+            setMessages(
+              msgs.map((m) => ({
+                role: m.role,
+                content: m.content,
+                sources: m.sources ?? [],
+                attachments: m.attachments ?? [],
+              }))
+            );
+          })
+          .catch(() => null),
+      ]).finally(() => {
+        if (cancelled) return;
+        setStreaming(false);
+        setStreamedContent("");
+      });
     });
 
     return () => {
@@ -202,7 +325,18 @@ export function ChatPanel({ conversationId }: Props) {
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    // Force a jump when the user just sent/regenerated (so their new message is
+    // always brought into view). Otherwise only follow the stream if they're
+    // already near the bottom, so we don't yank a user who scrolled up to read.
+    // Coalesce writes via rAF so streaming tokens don't trigger a reflow each.
+    const force = forceScrollRef.current;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (!force && !nearBottom) return;
+    const id = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      forceScrollRef.current = false;
+    });
+    return () => cancelAnimationFrame(id);
   }, [messages, streamedContent, streaming]);
 
   useEffect(() => {
@@ -240,6 +374,7 @@ export function ChatPanel({ conversationId }: Props) {
 
     setPendingAttachments([]);
     setInput("");
+    forceScrollRef.current = true;
     setMessages((prev) => [
       ...prev,
       {
@@ -295,6 +430,7 @@ export function ChatPanel({ conversationId }: Props) {
       toast.info(`Limit reached — up to ${MAX_VARIANTS} variants per question.`);
       return;
     }
+    forceScrollRef.current = true;
     setStreamedContent("");
     setStreaming(true);
     chatStreams.start({
@@ -374,7 +510,13 @@ export function ChatPanel({ conversationId }: Props) {
       </div>
 
       {/* Composer */}
-      <div className="px-3 md:px-6 pb-[max(env(safe-area-inset-bottom),14px)] pt-4 bg-paper border-t border-paper-border/50">
+      <div
+        className="px-3 md:px-6 pb-[max(env(safe-area-inset-bottom),14px)] pt-4 bg-paper border-t border-paper-border/50"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="max-w-3xl mx-auto">
           {pendingAttachments.length > 0 && (
             <AttachmentTray
@@ -384,7 +526,12 @@ export function ChatPanel({ conversationId }: Props) {
             />
           )}
 
-          <div className="paper-pad px-2.5 py-2.5 flex items-end gap-2 focus-within:border-paper-accent/60 transition">
+          <div
+            className={cn(
+              "paper-pad px-2.5 py-2.5 flex items-end gap-2 focus-within:border-paper-accent/60 transition",
+              isDragging && "ring-2 ring-paper-accent/70 ring-offset-2 ring-offset-paper border-paper-accent"
+            )}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -410,10 +557,13 @@ export function ChatPanel({ conversationId }: Props) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
+                onPaste={handlePaste}
                 placeholder={
-                  pendingAttachments.length > 0
-                    ? "Ask about the attached file…"
-                    : "Write your next question…"
+                  isDragging
+                    ? "Drop image or file to attach…"
+                    : pendingAttachments.length > 0
+                      ? "Ask about the attached file…"
+                      : "Write your next question…"
                 }
                 disabled={streaming || uploadingForMessage}
                 className={cn(
@@ -462,18 +612,23 @@ export function ChatPanel({ conversationId }: Props) {
 
       {/* Sources dialog */}
       <Dialog open={!!sourcesDialog} onOpenChange={(o) => !o && setSourcesDialog(null)}>
-        <DialogContent className="bg-paper text-paper-foreground border-paper-border max-w-2xl">
+        <DialogContent className="bg-paper text-paper-foreground border-paper-border max-w-2xl max-h-[80vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle
               className="text-paper-foreground"
               style={{ fontFamily: "var(--font-serif)" }}
             >
-              Sources for: {sourcesDialog?.title}
+              Sources
             </DialogTitle>
             <DialogDescription className="text-paper-muted">
               These pages from your library contributed to this answer.
             </DialogDescription>
           </DialogHeader>
+          {sourcesDialog?.title && (
+            <p className="-mt-1 text-sm text-paper-foreground/70 line-clamp-2 break-words">
+              {sourcesDialog.title}
+            </p>
+          )}
           {sourcesDialog && sourcesDialog.sources.length > 0 ? (
             <SourceList sources={sourcesDialog.sources} />
           ) : (
@@ -583,7 +738,7 @@ function TurnBlock({
                   Reading attachment…
                 </div>
               ) : (
-                <TypingInk />
+                <TypingInk question={question} />
               )
             ) : null}
           </div>
@@ -778,42 +933,68 @@ function AttachmentTray({
 }) {
   return (
     <div className="flex flex-wrap gap-2 mb-2 px-1">
-      {files.map((file, i) => {
-        const isImage = file.type.startsWith("image/");
-        const previewUrl = isImage ? URL.createObjectURL(file) : null;
-        return (
-          <div
-            key={`${file.name}-${i}`}
-            className="relative inline-flex items-center gap-2 rounded-xl border border-paper-border bg-paper pr-2.5 pl-1.5 py-1.5"
-          >
-            {previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt={file.name} className="h-10 w-10 rounded-md object-cover" />
-            ) : (
-              <div className="h-10 w-10 rounded-md bg-paper-accent/20 flex items-center justify-center">
-                <FileIcon className="h-4 w-4 text-paper-accent" />
-              </div>
-            )}
-            <div className="flex flex-col min-w-0 leading-tight">
-              <span className="text-xs font-medium truncate max-w-[160px] text-paper-foreground">
-                {file.name}
-              </span>
-              <span className="text-[10px] text-paper-muted">
-                {(file.size / 1024).toFixed(0)} KB · for this question
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onRemove(i)}
-              disabled={disabled}
-              aria-label={`Remove ${file.name}`}
-              className="absolute -top-1.5 -right-1.5 h-5 w-5 inline-flex items-center justify-center rounded-full bg-paper border border-paper-border hover:bg-destructive hover:text-destructive-foreground hover:border-destructive disabled:opacity-40 disabled:pointer-events-none"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        );
-      })}
+      {files.map((file, i) => (
+        <AttachmentChip
+          key={`${file.name}-${file.size}-${file.lastModified}-${i}`}
+          file={file}
+          onRemove={() => onRemove(i)}
+          disabled={disabled}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AttachmentChip({
+  file,
+  onRemove,
+  disabled,
+}: {
+  file: File;
+  onRemove: () => void;
+  disabled?: boolean;
+}) {
+  // Create the blob URL once per file and revoke it on unmount. Doing this
+  // inline in the render path leaks a fresh URL on every keystroke / stream
+  // tick, which freezes the browser after a minute or two.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file.type.startsWith("image/")) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  return (
+    <div className="relative inline-flex items-center gap-2 rounded-xl border border-paper-border bg-paper pr-2.5 pl-1.5 py-1.5">
+      {previewUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={previewUrl} alt={file.name} className="h-10 w-10 rounded-md object-cover" />
+      ) : (
+        <div className="h-10 w-10 rounded-md bg-paper-accent/20 flex items-center justify-center">
+          <FileIcon className="h-4 w-4 text-paper-accent" />
+        </div>
+      )}
+      <div className="flex flex-col min-w-0 leading-tight">
+        <span className="text-xs font-medium truncate max-w-[160px] text-paper-foreground">
+          {file.name}
+        </span>
+        <span className="text-[10px] text-paper-muted">
+          {(file.size / 1024).toFixed(0)} KB · for this question
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={disabled}
+        aria-label={`Remove ${file.name}`}
+        className="absolute -top-1.5 -right-1.5 h-5 w-5 inline-flex items-center justify-center rounded-full bg-paper border border-paper-border hover:bg-destructive hover:text-destructive-foreground hover:border-destructive disabled:opacity-40 disabled:pointer-events-none"
+      >
+        <X className="h-3 w-3" />
+      </button>
     </div>
   );
 }
