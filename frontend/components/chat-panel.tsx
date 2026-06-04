@@ -46,13 +46,44 @@ function asAttachment(ref: AttachmentRef): MessageAttachment {
   return typeof ref === "string" ? { name: ref } : ref;
 }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result ?? ""));
-    r.onerror = () => reject(r.error ?? new Error("read failed"));
-    r.readAsDataURL(file);
-  });
+// Image previews are persisted to the DB (messages.attachments) and re-sent to
+// the browser on every conversation open, so we never store the raw file.
+// Instead we downscale + JPEG-compress to a small thumbnail. Base64 inflates
+// ~33%, so an uncompressed 5MB photo would be a ~6.7MB string per message.
+const PREVIEW_MAX_DIM = 1024; // px, longest side
+const PREVIEW_JPEG_QUALITY = 0.7;
+const PREVIEW_MAX_CHARS = 600_000; // hard cap on the stored data URL (~600KB)
+
+/**
+ * Downscale + compress an image File into a small preview data URL. Returns
+ * null if the image can't be decoded or still exceeds the size cap after
+ * compression — the caller then stores just the filename (no inline preview).
+ */
+async function imageToPreviewDataUrl(file: File): Promise<string | null> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("decode failed"));
+      el.src = objectUrl;
+    });
+    const scale = Math.min(1, PREVIEW_MAX_DIM / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", PREVIEW_JPEG_QUALITY);
+    return dataUrl.length <= PREVIEW_MAX_CHARS ? dataUrl : null;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 const UPLOAD_ACCEPT = ".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp";
@@ -362,11 +393,8 @@ export function ChatPanel({ conversationId }: Props) {
     const richAttachments: MessageAttachment[] = await Promise.all(
       files.map(async (f) => {
         if (f.type.startsWith("image/")) {
-          try {
-            return { name: f.name, dataUrl: await fileToDataUrl(f) };
-          } catch {
-            return { name: f.name };
-          }
+          const dataUrl = await imageToPreviewDataUrl(f);
+          return dataUrl ? { name: f.name, dataUrl } : { name: f.name };
         }
         return { name: f.name };
       })
