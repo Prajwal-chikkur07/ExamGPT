@@ -9,8 +9,14 @@ from PIL import Image
 
 
 def ocr_image(path: Path) -> str:
-    img = Image.open(str(path))
-    return pytesseract.image_to_string(img)
+    # Pass the file path straight to tesseract. Handing pytesseract a PIL Image
+    # makes it re-save to a temp file under $TMPDIR before invoking tesseract;
+    # if that temp dir isn't readable by the tesseract subprocess, OCR fails
+    # with a confusing decode error. Using the path avoids the extra hop.
+    # Validate it's a real image first so corrupt uploads raise a clear error.
+    with Image.open(str(path)) as img:
+        img.verify()
+    return pytesseract.image_to_string(str(path))
 
 
 def ocr_pdf(path: Path, dpi: int = 200) -> str:

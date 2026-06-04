@@ -32,3 +32,8 @@ backend/data/uploads/
 
 # Logs
 *.log
+
+# Local dev artifacts
+.devlogs/
+backups/
+run-dev.sh

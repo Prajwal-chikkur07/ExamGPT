@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # Retrieval pipeline — tuned for low latency. Bump these up if you trade speed for recall.
     retrieve_top_k: int = 12      # candidates from each retriever (vector / BM25)
-    rerank_top_k: int = 4         # final chunks sent to the LLM
+    rerank_top_k: int = 8         # final chunks sent to the LLM (broader coverage for multi-topic asks)
     rrf_k: int = 60               # constant for Reciprocal Rank Fusion
     history_window: int = 10      # conversation messages fed to the LLM
 
